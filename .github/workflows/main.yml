@@ -2,7 +2,8 @@ name: 1H FNO Reversal Scanner
 
 on:
   schedule:
-    - cron: '5 4-10 * * 1-5' # 9:35 AM to 3:35 PM IST
+    # 9:35 AM to 3:35 PM IST (Monday to Friday)
+    - cron: '5 4-10 * * 1-5'
   workflow_dispatch:
 
 jobs:
@@ -12,17 +13,16 @@ jobs:
       contents: write
     
     env:
-      # This forces the runner to use Node 24 and helps clear the deprecation nagging
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5 # Upgraded to v5 for Node 24 support
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6 # Upgraded to v6 for Node 24 support
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
