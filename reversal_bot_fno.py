@@ -3,11 +3,12 @@ import pandas as pd
 import requests
 import os
 import json
+from datetime import datetime
 
 # --- Configuration ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_memory_fno_1h.json"
+MEMORY_FILE = "alert_memory_fno_15m.json"
 
 # Full 182 F&O Stock List (Updated April 2026)
 FNO_SYMBOLS = [
@@ -18,19 +19,19 @@ FNO_SYMBOLS = [
     "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", "CANBK.NS", "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", 
     "COCHINSHIP.NS", "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", "CROMPTON.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", 
     "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", 
-    "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", 
+    "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", "GMRINFRA.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", 
     "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", 
-    "HINDPETRO.NS", "HINDUNILVR.NS", "HYUNDAI.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFCFIRSTB.NS", "IEX.NS", 
+    "HINDPETRO.NS", "HINDUNILVR.NS", "HYUNDAI.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFC.NS", "IDFCFIRSTB.NS", "IEX.NS", 
     "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "IPCALAB.NS", 
     "IRCTC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS", "L&TFH.NS", "LALPATHLAB.NS", 
-    "LICHSGFIN.NS", "LTIM.NS", "LT.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", 
+    "LICHSGFIN.NS", "LTIM.NS", "LT.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", "MCDOWELL-N.NS", 
     "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MOTILALOFS.NS", "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS", "NAM-INDIA.NS", "NATIONALUM.NS", 
-    "NAVINFLUOR.NS", "NESTLEIND.NS", "NIFTYBEES.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "ONGC.NS", "PAGEIND.NS", "PERSISTENT.NS", 
+    "NAVINFLUOR.NS", "NESTLEIND.NS", "NIFTYBEES.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "ONGC.NS", "PAGEIND.NS", "PEL.NS", "PERSISTENT.NS", 
     "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RECLTD.NS", 
     "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SHRIRAMFIN.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", 
-    "SUNTV.NS", "SYNGENE.NS", "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", 
+    "SUNTV.NS", "SYNGENE.NS", "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", 
     "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", 
-    "WIPRO.NS", "ZYDUSLIFE.NS"
+    "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
 def load_memory():
@@ -47,26 +48,26 @@ def save_memory(memory):
 def send_alert(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown"
     try: requests.get(url, timeout=10)
-    except: pass
+    except Exception as e: print(f"Telegram Error: {e}")
 
 def get_signal(symbol, memory):
     try:
-        df = yf.download(symbol, period="2mo", interval="1h", progress=False)
-        if df.empty or len(df) < 22: return memory
+        # Changed to 15m interval for more frequent signals
+        df = yf.download(symbol, period="3d", interval="15m", progress=False)
+        if df.empty or len(df) < 20: return memory
         
-        # Use second-to-last candle for confirmed data
+        # Check second-to-last candle for confirmed close
         row = df.iloc[-2]
         last_ts = str(df.index[-2])
         if memory.get(symbol) == last_ts: return memory
 
-        # Metrics
+        # Calculate Indicators
         df['Body'] = abs(df['Open'] - df['Close'])
         df['Lower_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
         df['Upper_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
-        df['SMA20'] = df['Close'].rolling(window=20).mean()
         df['Vol_SMA10'] = df['Volume'].rolling(window=10).mean()
         
-        # RSI (14)
+        # RSI Calculation
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -74,40 +75,35 @@ def get_signal(symbol, memory):
         df['RSI'] = 100 - (100 / (1 + rs))
 
         row = df.iloc[-2]
-        vol_ok = row['Volume'] > (row['Vol_SMA10'] * 0.9) # 90% of avg volume is acceptable
+        vol_ok = row['Volume'] > (row['Vol_SMA10'] * 0.9)
         rsi_val = row['RSI']
+        body = row['Body']
         
-        # Balanced Reversal Logic
-        # Hammer: Shadow > 1.5x Body, Small Head, Price < SMA20, RSI < 45
-        is_hammer = (row['Lower_Shadow'] > row['Body'] * 1.5) and \
-                    (row['Upper_Shadow'] < row['Body'] * 0.8) and \
-                    (row['Close'] < row['SMA20']) and vol_ok and (rsi_val < 45)
-        
-        # Star: Shadow > 1.5x Body, Small Tail, Price > SMA20, RSI > 55
-        is_star = (row['Upper_Shadow'] > row['Body'] * 1.5) and \
-                  (row['Lower_Shadow'] < row['Body'] * 0.8) and \
-                  (row['Close'] > row['SMA20']) and vol_ok and (rsi_val > 55)
+        # Standard Balanced Logic for 15m
+        is_hammer = (row['Lower_Shadow'] > body * 1.5) and (row['Upper_Shadow'] < body * 0.8) and (rsi_val < 45) and vol_ok
+        is_star = (row['Upper_Shadow'] > body * 1.5) and (row['Lower_Shadow'] < body * 0.8) and (rsi_val > 55) and vol_ok
 
         if is_hammer or is_star:
-            type_str = "🚀 BALANCED HAMMER" if is_hammer else "🔻 BALANCED STAR"
+            type_str = "🚀 15M HAMMER (BUY)" if is_hammer else "🔻 15M STAR (SELL)"
             entry = (row['High'] * 1.0005) if is_hammer else (row['Low'] * 0.9995)
-            sl = (row['Low'] * 0.9995) if is_hammer else (row['High'] * 1.0005)
+            sl = row['Low'] if is_hammer else row['High']
             target = (entry + abs(entry-sl)*2) if is_hammer else (entry - abs(entry-sl)*2)
 
-            msg = (f"🎯 *{type_str}*\nStock: `{symbol.split('.')[0]}`\n"
-                   f"🔥 RSI: {rsi_val:.2f}\n"
-                   f"Time: {last_ts}\n"
+            msg = (f"🎯 *{type_str}*\nStock: `{symbol.replace('.NS','')}`\n"
+                   f"RSI: {rsi_val:.2f} | Time: {last_ts}\n"
                    f"---------------------------\n"
                    f"🟢 Entry: {entry:.2f} | 🛑 SL: {sl:.2f}\n"
-                   f"🎯 Target: {target:.2f}\n"
-                   f"🎁 Capture: {abs(target-entry):.2f} pts")
+                   f"🎯 Target: {target:.2f} | Pts: {abs(target-entry):.2f}")
             send_alert(msg)
             memory[symbol] = last_ts
-    except: pass
+    except Exception as e:
+        print(f"Error on {symbol}: {e}")
     return memory
 
 if __name__ == "__main__":
+    print(f"--- Starting Scan at {datetime.now()} ---")
     mem = load_memory()
     for s in FNO_SYMBOLS:
         mem = get_signal(s, mem)
     save_memory(mem)
+    print(f"--- Scan Complete ---")
