@@ -10,28 +10,17 @@ TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_memory_fno_15m.json"
 
-# Full 182 F&O Stock List (Updated April 2026)
+# Cleaned FNO List
 FNO_SYMBOLS = [
-    "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ADANIPOWER.NS", 
+    "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENT.NS", "ADANIPORTS.NS", "ADANIPOWER.NS", 
     "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", "AUBANK.NS", 
     "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", "BAJFINANCE.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", 
-    "BANKBARODA.NS", "BANKBEES.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", "BIOCON.NS", "BOSCHLTD.NS", 
-    "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", "CANBK.NS", "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", 
-    "COCHINSHIP.NS", "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", "CROMPTON.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", 
-    "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", 
-    "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", "GMRINFRA.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", 
-    "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", 
-    "HINDPETRO.NS", "HINDUNILVR.NS", "HYUNDAI.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFC.NS", "IDFCFIRSTB.NS", "IEX.NS", 
-    "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "IPCALAB.NS", 
-    "IRCTC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS", "L&TFH.NS", "LALPATHLAB.NS", 
-    "LICHSGFIN.NS", "LTIM.NS", "LT.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", "MCDOWELL-N.NS", 
-    "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MOTILALOFS.NS", "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS", "NAM-INDIA.NS", "NATIONALUM.NS", 
-    "NAVINFLUOR.NS", "NESTLEIND.NS", "NIFTYBEES.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "ONGC.NS", "PAGEIND.NS", "PEL.NS", "PERSISTENT.NS", 
-    "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RECLTD.NS", 
-    "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SHRIRAMFIN.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", 
-    "SUNTV.NS", "SYNGENE.NS", "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", 
-    "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", 
-    "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
+    "BANKBARODA.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", "BIOCON.NS", "BPCL.NS", "BRITANNIA.NS", 
+    "BSOFT.NS", "CANBK.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", "COCHINSHIP.NS", "COFORGE.NS", "CUMMINSIND.NS", "DIVISLAB.NS", 
+    "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "FEDERALBNK.NS", "HAL.NS", "HCLTECH.NS", "HDFCBANK.NS", "HEROMOTOCO.NS", 
+    "HINDALCO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "IDFCFIRSTB.NS", "INFY.NS", "IOC.NS", "IRCTC.NS", "ITC.NS", "JSWSTEEL.NS", 
+    "KOTAKBANK.NS", "LTIM.NS", "LT.NS", "LUPIN.NS", "M&M.NS", "MARUTI.NS", "MCX.NS", "MUTHOOTFIN.NS", "NTPC.NS", "ONGC.NS", "PFC.NS", 
+    "RELIANCE.NS", "SBIN.NS", "SUNPHARMA.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TRENT.NS", "WIPRO.NS", "ZOMATO.NS"
 ]
 
 def load_memory():
@@ -48,48 +37,54 @@ def save_memory(memory):
 def send_alert(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown"
     try: requests.get(url, timeout=10)
-    except Exception as e: print(f"Telegram Error: {e}")
+    except: pass
 
 def get_signal(symbol, memory):
     try:
-        # Changed to 15m interval for more frequent signals
-        df = yf.download(symbol, period="3d", interval="15m", progress=False)
-        if df.empty or len(df) < 20: return memory
+        # Fetching data and flattening the Multi-Index columns
+        data = yf.download(symbol, period="3d", interval="15m", progress=False)
+        if data.empty or len(data) < 20: return memory
         
-        # Check second-to-last candle for confirmed close
-        row = df.iloc[-2]
+        # This fix handles the yfinance Multi-Index issue
+        df = data.copy()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        # Check second-to-last candle
         last_ts = str(df.index[-2])
         if memory.get(symbol) == last_ts: return memory
 
-        # Calculate Indicators
-        df['Body'] = abs(df['Open'] - df['Close'])
-        df['Lower_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
-        df['Upper_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
+        # Logic Calculations
+        df['Body'] = (df['Open'] - df['Close']).abs()
+        df['Min_OC'] = df[['Open', 'Close']].min(axis=1)
+        df['Max_OC'] = df[['Open', 'Close']].max(axis=1)
+        df['Lower_Shadow'] = df['Min_OC'] - df['Low']
+        df['Upper_Shadow'] = df['High'] - df['Max_OC']
         df['Vol_SMA10'] = df['Volume'].rolling(window=10).mean()
-        
+        df['SMA20'] = df['Close'].rolling(window=20).mean()
+
         # RSI Calculation
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
+        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
 
         row = df.iloc[-2]
-        vol_ok = row['Volume'] > (row['Vol_SMA10'] * 0.9)
+        vol_ok = row['Volume'] > (row['Vol_SMA10'] * 0.85)
         rsi_val = row['RSI']
         body = row['Body']
         
-        # Standard Balanced Logic for 15m
-        is_hammer = (row['Lower_Shadow'] > body * 1.5) and (row['Upper_Shadow'] < body * 0.8) and (rsi_val < 45) and vol_ok
-        is_star = (row['Upper_Shadow'] > body * 1.5) and (row['Lower_Shadow'] < body * 0.8) and (rsi_val > 55) and vol_ok
+        # Reversal Logic
+        is_hammer = (row['Lower_Shadow'] > body * 1.5) and (row['Upper_Shadow'] < body * 0.8) and (rsi_val < 50) and (row['Close'] < row['SMA20']) and vol_ok
+        is_star = (row['Upper_Shadow'] > body * 1.5) and (row['Lower_Shadow'] < body * 0.8) and (rsi_val > 50) and (row['Close'] > row['SMA20']) and vol_ok
 
         if is_hammer or is_star:
-            type_str = "🚀 15M HAMMER (BUY)" if is_hammer else "🔻 15M STAR (SELL)"
+            direction = "🚀 15M HAMMER (BUY)" if is_hammer else "🔻 15M STAR (SELL)"
             entry = (row['High'] * 1.0005) if is_hammer else (row['Low'] * 0.9995)
             sl = row['Low'] if is_hammer else row['High']
             target = (entry + abs(entry-sl)*2) if is_hammer else (entry - abs(entry-sl)*2)
 
-            msg = (f"🎯 *{type_str}*\nStock: `{symbol.replace('.NS','')}`\n"
+            msg = (f"🎯 *{direction}*\nStock: `{symbol.split('.')[0]}`\n"
                    f"RSI: {rsi_val:.2f} | Time: {last_ts}\n"
                    f"---------------------------\n"
                    f"🟢 Entry: {entry:.2f} | 🛑 SL: {sl:.2f}\n"
@@ -103,7 +98,8 @@ def get_signal(symbol, memory):
 if __name__ == "__main__":
     print(f"--- Starting Scan at {datetime.now()} ---")
     mem = load_memory()
+    # Scans a targeted FNO list to stay within GitHub Action limits
     for s in FNO_SYMBOLS:
         mem = get_signal(s, mem)
     save_memory(mem)
-    print(f"--- Scan Complete ---")
+    print("--- Scan Complete ---")
