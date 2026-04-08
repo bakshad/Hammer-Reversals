@@ -1,0 +1,24 @@
+name: Weekly Email Report
+
+on:
+  schedule:
+    - cron: '30 10 * * 5' # Every Friday at 10:30 UTC (4:00 PM IST)
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Send Email
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }} # Your Gmail address
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }} # Your Gmail App Password
+        run: python send_weekly_report.py
