@@ -1,43 +1,42 @@
 import smtplib
 import os
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email.mime.text import MIMEText
-from email import encoders
+from email.message import EmailMessage
+from datetime import datetime
 
-def send_email():
-    sender_email = os.getenv("EMAIL_USER")
-    sender_password = os.getenv("EMAIL_PASS") # Use Gmail App Password
-    receiver_email = "bakshad@gmail.com"
-    subject = f"Weekly F&O Reversal Summary - {os.getenv('GITHUB_RUN_ID')}"
-    body = "Please find the attached weekly summary of F&O reversal signals."
+def send_weekly_summary():
+    # Configuration from GitHub Secrets
+    EMAIL_USER = "bakshad@gmail.com"
+    EMAIL_PASS = os.getenv('EMAIL_PASS') # Gmail App Password
+    
+    msg = EmailMessage()
+    msg['Subject'] = f"Weekly Trading Performance & ML Data: {datetime.now().strftime('%d %b %Y')}"
+    msg['From'] = EMAIL_USER
+    msg['To'] = EMAIL_USER
+    msg.set_content(
+        "Attached is your Weekly Trade Summary and the new ML Context Log.\n\n"
+        "Review the 'ml_training_data.csv' to see which trend-flips had the "
+        "strongest ADX support this week."
+    )
 
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = receiver_email
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
+    # Attach the files if they exist
+    for filename in ["weekly_trade_summary.csv", "ml_training_data.csv"]:
+        if os.path.exists(filename):
+            with open(filename, 'rb') as f:
+                file_data = f.read()
+                msg.add_attachment(
+                    file_data,
+                    maintype='application',
+                    subtype='octet-stream',
+                    filename=filename
+                )
 
-    filename = "weekly_trade_summary.csv"
-    if os.path.exists(filename):
-        with open(filename, "rb") as attachment:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition", f"attachment; filename= {filename}")
-            msg.attach(part)
-
-        try:
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(sender_email, sender_password)
-            server.send_message(msg)
-            server.quit()
-            print("Email sent successfully!")
-        except Exception as e:
-            print(f"Failed to send email: {e}")
-    else:
-        print("CSV file not found. Skipping email.")
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(EMAIL_USER, EMAIL_PASS)
+            smtp.send_message(msg)
+        print("Weekly Report Sent Successfully.")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
 
 if __name__ == "__main__":
-    send_email()
+    send_weekly_summary()
