@@ -11,19 +11,20 @@ from datetime import datetime, timedelta
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_memory_fno_15m.json"
+WEEKLY_LOG = "weekly_trade_summary.csv"
 ML_LOG = "ml_training_data.csv"
 
-# April 2026 F&O Universe (Indices + 185+ Stocks)
+# Updated April 2026 F&O Universe (Indices + 223 Stocks)
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "ADANIPOWER.NS", "COCHINSHIP.NS", "HYUNDAI.NS", 
-    "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS", "GODFRYPHLP.NS", "RELIANCE.NS", 
-    "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "INFY.NS", "TCS.NS", "TATAMOTORS.NS", 
-    "AXISBANK.NS", "BHARTIARTL.NS", "BAJFINANCE.NS", "LT.NS", "MARUTI.NS", 
-    "SUNPHARMA.NS", "TITAN.NS", "ULTRACEMCO.NS", "ADANIENT.NS", "ZOMATO.NS", 
-    "HAL.NS", "BEL.NS", "TRENT.NS", "JSWSTEEL.NS", "ITC.NS", "ASHOKLEY.NS", 
-    "EICHERMOT.NS", "ASIANPAINT.NS", "COALINDIA.NS", "ONGC.NS", "ABB.NS",
-    "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS",
-    "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "AUBANK.NS", "AUROPHARMA.NS",
+    "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS", "FORCEMOT.NS", "GODFRYPHLP.NS",
+    "SWIGGY.NS", "WAAREEENER.NS", "PREMIERENE.NS", "RELIANCE.NS", "HDFCBANK.NS",
+    "ICICIBANK.NS", "SBIN.NS", "INFY.NS", "TCS.NS", "TATAMOTORS.NS", "AXISBANK.NS",
+    "BHARTIARTL.NS", "BAJFINANCE.NS", "LT.NS", "MARUTI.NS", "SUNPHARMA.NS",
+    "TITAN.NS", "ULTRACEMCO.NS", "ADANIENT.NS", "ZOMATO.NS", "HAL.NS", "BEL.NS",
+    "TRENT.NS", "JSWSTEEL.NS", "ITC.NS", "ASHOKLEY.NS", "EICHERMOT.NS", "ASIANPAINT.NS",
+    "ABB.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIPORTS.NS", "ALKEM.NS", 
+    "AMBUJACEM.NS", "APOLLOHOSP.NS", "APOLLOTYRE.NS", "AUBANK.NS", "AUROPHARMA.NS",
     "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS",
     "BANKBARODA.NS", "BATAINDIA.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHEL.NS",
     "BIOCON.NS", "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", "CANBK.NS", "CANFINHOME.NS",
@@ -49,6 +50,15 @@ SYMBOLS = [
     "UBL.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "ZYDUSLIFE.NS"
 ]
 
+def initialize_files():
+    """Ensure all required files exist with headers to prevent Git errors."""
+    if not os.path.exists(WEEKLY_LOG):
+        with open(WEEKLY_LOG, "w", newline="") as f:
+            csv.writer(f).writerow(["Date", "Symbol", "Type", "Entry", "Exit", "Pts", "Percent"])
+    if not os.path.exists(ML_LOG):
+        with open(ML_LOG, "w", newline="") as f:
+            csv.writer(f).writerow(["Date", "Symbol", "Type", "ADX", "Context", "Result"])
+
 def calculate_adx(df, n=14):
     df = df.copy()
     df['up'] = df['High'] - df['High'].shift(1)
@@ -57,44 +67,43 @@ def calculate_adx(df, n=14):
     df['-dm'] = np.where((df['dn'] > df['up']) & (df['dn'] > 0), df['dn'], 0)
     tr = pd.concat([df['High']-df['Low'], (df['High']-df['Close'].shift(1)).abs(), (df['Low']-df['Close'].shift(1)).abs()], axis=1).max(axis=1)
     atr = tr.rolling(n).mean()
-    plus_di = 100 * (df['+dm'].rolling(n).mean() / atr)
-    minus_di = 100 * (df['-dm'].rolling(n).mean() / atr)
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    plus_di = 100 * (df['+dm'].rolling(n).mean() / (atr + 1e-9))
+    minus_di = 100 * (df['-dm'].rolling(n).mean() / (atr + 1e-9))
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di + 1e-9)
     return dx.rolling(n).mean(), plus_di, minus_di
 
 def get_signal(symbol, memory):
     try:
+        # 1. Clean Data Acquisition
         df = yf.download(symbol, period="5d", interval="15m", progress=False, multi_level_index=False)
         if df.empty: return memory
-        df.columns = [c.capitalize() for c in df.columns]
+        df.columns = [str(c).capitalize() for c in df.columns]
 
-        # Indicators
+        # 2. Indicator Core
         df['ADX'], df['+DI'], df['-DI'] = calculate_adx(df)
         df['Body'] = (df['Open'] - df['Close']).abs()
         df['L_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
         df['U_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
         
-        # Woodie Pivots
+        # 3. Woodie Pivot Check
         d_df = yf.download(symbol, period="2d", interval="1d", progress=False, multi_level_index=False)
         h, l, c = d_df.iloc[-1]['High'], d_df.iloc[-1]['Low'], d_df.iloc[-1]['Close']
         pp = (h + l + 2*c)/4
 
-        sig = df.iloc[-2]  # Pattern Candle
-        curr = df.iloc[-1] # Confirmation Candle
+        sig = df.iloc[-2]  
+        curr = df.iloc[-1] 
         adx_val = df['ADX'].iloc[-1]
         trend_arrow = "🔼" if adx_val > df['ADX'].iloc[-2] else "🔽"
 
-        # --- CORE A: HAMMER (Reversal) ---
+        # Signal Logic
         is_hammer = (sig['L_Shadow'] > sig['Body'] * 1.5) and (sig['U_Shadow'] < sig['Body'] * 0.6)
-        
-        # --- CORE B: TREND-FLIP (Ashok Leyland) ---
         was_falling = df['-DI'].iloc[-2] > df['+DI'].iloc[-2]
         is_v_reversal = was_falling and (curr['Close'] > sig['High']) and (sig['Low'] < pp * 1.003)
 
         if symbol not in memory:
             msg = ""
             if is_hammer:
-                msg = f"🔨 *HAMMER: {symbol.replace('.NS','')}*\nStr: {adx_val:.1f} {trend_arrow}\n📍 *Level:* Pivot Zone"
+                msg = f"🔨 *HAMMER: {symbol.replace('.NS','')}*\nStr: {adx_val:.1f} {trend_arrow}\n📍 *Zone:* Pivot"
             elif is_v_reversal:
                 msg = f"🔄 *TREND FLIP: {symbol.replace('.NS','')}*\n📉 Exhaustion {trend_arrow}\n🚀 *Flip:* {curr['Close']:.2f} > {sig['High']:.2f}"
 
@@ -106,12 +115,9 @@ def get_signal(symbol, memory):
     return memory
 
 if __name__ == "__main__":
-    if not all([TOKEN, CHAT_ID]): exit("Missing Secrets")
-    
+    initialize_files()
     if os.path.exists(MEMORY_FILE):
         with open(MEMORY_FILE, 'r') as f: mem = json.load(f)
     else: mem = {}
-
     for s in SYMBOLS: mem = get_signal(s, mem)
-
     with open(MEMORY_FILE, 'w') as f: json.dump(mem, f, indent=4)
