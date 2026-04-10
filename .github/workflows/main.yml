@@ -1,21 +1,18 @@
-name: Professional FNO Reversal Scanner
+name: Hybrid FNO Scanner
 
 on:
   schedule:
-    # 9:15 AM IST (03:45 UTC) - Opening Scan
+    # 9:15 AM to 3:30 PM IST (Mon-Fri)
     - cron: '45 3 * * 1-5'
-    # 9:30 AM to 3:15 PM IST (04:00 - 09:45 UTC) - Every 15 mins
     - cron: '0,15,30,45 4-9 * * 1-5'
-    # 3:30 PM IST (10:00 UTC) - Final Market Close Scan
     - cron: '0 10 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  trade-scan:
+  run-hybrid:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # CRITICAL: Allows the bot to save 'Locked-On' stocks
-    
+      contents: write
     env:
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -30,16 +27,15 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance pandas requests
+        run: pip install yfinance pandas requests numpy
 
-      - name: Run Scanner
+      - name: Run Hybrid Scanner
         run: python reversal_bot_fno.py
 
-      - name: Sync Memory and Trade Logs
+      - name: Commit Memory and ML Logs
         run: |
-          git config --global user.name "ReversalBot-Action"
-          git config --global user.email "actions@github.com"
-          # Sync both the JSON memory and the CSV summary
-          git add alert_memory_fno_15m.json weekly_trade_summary.csv
-          git commit -m "Sync memory and logs [skip ci]" || exit 0
+          git config --global user.name "HybridBot-Action"
+          git config --global user.email "bot@trading.com"
+          git add alert_memory_fno_15m.json weekly_trade_summary.csv ml_training_data.csv
+          git commit -m "Sync Memory/ML Data [skip ci]" || exit 0
           git push
