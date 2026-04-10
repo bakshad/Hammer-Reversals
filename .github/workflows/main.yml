@@ -1,24 +1,22 @@
-name: 15-Minute FNO Reversal Scanner
+name: Professional FNO Reversal Scanner
 
 on:
   schedule:
-    # 03:45 UTC (09:15 IST)
+    # 9:15 AM IST (03:45 UTC) - Opening Scan
     - cron: '45 3 * * 1-5'
-    # Every 15 mins from 04:00 to 09:45 UTC (09:30 to 15:15 IST)
+    # 9:30 AM to 3:15 PM IST (04:00 - 09:45 UTC) - Every 15 mins
     - cron: '0,15,30,45 4-9 * * 1-5'
-    # 10:00 UTC (15:30 IST) - The Final Scan
+    # 3:30 PM IST (10:00 UTC) - Final Market Close Scan
     - cron: '0 10 * * 1-5'
   workflow_dispatch:
 
-
 jobs:
-  build:
+  trade-scan:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # CRITICAL: Allows the bot to save 'Locked-On' stocks
     
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
@@ -31,16 +29,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: pip install yfinance pandas requests
 
-      - name: Run Screener
+      - name: Run Scanner
         run: python reversal_bot_fno.py
 
-      - name: Commit and Push Memory
+      - name: Sync Memory and Trade Logs
         run: |
-          git config --global user.name "GitHub Action Bot"
+          git config --global user.name "ReversalBot-Action"
           git config --global user.email "actions@github.com"
-          git add alert_memory_fno_15m.json
-          git commit -m "Update alert memory [skip ci]" || exit 0
+          # Sync both the JSON memory and the CSV summary
+          git add alert_memory_fno_15m.json weekly_trade_summary.csv
+          git commit -m "Sync memory and logs [skip ci]" || exit 0
           git push
