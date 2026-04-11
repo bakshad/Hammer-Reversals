@@ -1,40 +1,30 @@
-name: Elite MTF FNO Intelligence
+name: Elite Reversal Intelligence
 
 on:
   schedule:
-    # Runs at 16 mins past the hour to ensure the candle is fully formed
-    # UTC 04:46 to 09:46 covers 10:16 AM to 3:16 PM IST
-    - cron: '46 4-9 * * 1-5'
+    # Runs every 15 mins during IST market hours
+    - cron: '*/15 3-10 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  mtf-scan:
+  scan-and-alert:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
+      - name: Dependencies
         run: pip install yfinance pandas requests numpy
-
-      - name: Run MTF Scanner
+      - name: Run Bot
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python reversal_bot_fno.py
-
-      - name: Sync Data
+      - name: Save Memory
         run: |
-          git config --global user.name "EliteBot-Action"
+          git config --global user.name "EliteBot"
           git config --global user.email "bot@trading.com"
           git add alert_memory_fno_mtf.json || true
-          git commit -m "Sync MTF Memory [skip ci]" || echo "No changes"
-          git push || echo "Retry next hour"
+          git commit -m "Sync Memory" || echo "No changes"
+          git push || echo "Retry later"
