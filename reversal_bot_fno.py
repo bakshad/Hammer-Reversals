@@ -4,25 +4,22 @@ import numpy as np
 import requests
 import os
 import json
-import csv
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # --- Configuration ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_memory_fno_15m.json"
-WEEKLY_LOG = "weekly_trade_summary.csv"
-ML_LOG = "ml_training_data.csv"
+MEMORY_FILE = "alert_memory_fno_mtf.json"
 
-# Updated April 2026 F&O Universe (Indices + 223 Stocks)
+# Full April 2026 F&O Universe (220+ Stocks)
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "ADANIPOWER.NS", "COCHINSHIP.NS", "HYUNDAI.NS", 
     "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS", "FORCEMOT.NS", "GODFRYPHLP.NS",
-    "SWIGGY.NS", "WAAREEENER.NS", "PREMIERENE.NS", "RELIANCE.NS", "HDFCBANK.NS",
-    "ICICIBANK.NS", "SBIN.NS", "INFY.NS", "TCS.NS", "TATAMOTORS.NS", "AXISBANK.NS",
-    "BHARTIARTL.NS", "BAJFINANCE.NS", "LT.NS", "MARUTI.NS", "SUNPHARMA.NS",
-    "TITAN.NS", "ULTRACEMCO.NS", "ADANIENT.NS", "ZOMATO.NS", "HAL.NS", "BEL.NS",
-    "TRENT.NS", "JSWSTEEL.NS", "ITC.NS", "ASHOKLEY.NS", "EICHERMOT.NS", "ASIANPAINT.NS",
+    "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "INFY.NS", "TCS.NS",
+    "TATAMOTORS.NS", "AXISBANK.NS", "BHARTIARTL.NS", "BAJFINANCE.NS", "LT.NS",
+    "MARUTI.NS", "SUNPHARMA.NS", "TITAN.NS", "ULTRACEMCO.NS", "ADANIENT.NS",
+    "ZOMATO.NS", "HAL.NS", "BEL.NS", "TRENT.NS", "JSWSTEEL.NS", "ITC.NS",
+    "ASHOKLEY.NS", "EICHERMOT.NS", "ASIANPAINT.NS", "COALINDIA.NS", "ONGC.NS",
     "ABB.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIPORTS.NS", "ALKEM.NS", 
     "AMBUJACEM.NS", "APOLLOHOSP.NS", "APOLLOTYRE.NS", "AUBANK.NS", "AUROPHARMA.NS",
     "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS",
@@ -50,16 +47,9 @@ SYMBOLS = [
     "UBL.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "ZYDUSLIFE.NS"
 ]
 
-def initialize_files():
-    """Ensure all required files exist with headers to prevent Git errors."""
-    if not os.path.exists(WEEKLY_LOG):
-        with open(WEEKLY_LOG, "w", newline="") as f:
-            csv.writer(f).writerow(["Date", "Symbol", "Type", "Entry", "Exit", "Pts", "Percent"])
-    if not os.path.exists(ML_LOG):
-        with open(ML_LOG, "w", newline="") as f:
-            csv.writer(f).writerow(["Date", "Symbol", "Type", "ADX", "Context", "Result"])
-
-def calculate_adx(df, n=14):
+def calculate_indicators(df):
+    # ADX and DI Calculation
+    n = 14
     df = df.copy()
     df['up'] = df['High'] - df['High'].shift(1)
     df['dn'] = df['Low'].shift(1) - df['Low']
@@ -67,55 +57,64 @@ def calculate_adx(df, n=14):
     df['-dm'] = np.where((df['dn'] > df['up']) & (df['dn'] > 0), df['dn'], 0)
     tr = pd.concat([df['High']-df['Low'], (df['High']-df['Close'].shift(1)).abs(), (df['Low']-df['Close'].shift(1)).abs()], axis=1).max(axis=1)
     atr = tr.rolling(n).mean()
-    plus_di = 100 * (df['+dm'].rolling(n).mean() / (atr + 1e-9))
-    minus_di = 100 * (df['-dm'].rolling(n).mean() / (atr + 1e-9))
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di + 1e-9)
-    return dx.rolling(n).mean(), plus_di, minus_di
+    df['ADX'] = (100 * (df['+dm'].rolling(n).mean() / (atr + 1e-9) - df['-dm'].rolling(n).mean() / (atr + 1e-9)).abs() / 
+                (df['+dm'].rolling(n).mean() / (atr + 1e-9) + df['-dm'].rolling(n).mean() / (atr + 1e-9) + 1e-9)).rolling(n).mean()
+    df['+DI'] = 100 * (df['+dm'].rolling(n).mean() / (atr + 1e-9))
+    df['-DI'] = 100 * (df['-dm'].rolling(n).mean() / (atr + 1e-9))
+    
+    # Shadow Logic
+    df['Body'] = (df['Open'] - df['Close']).abs()
+    df['L_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
+    df['U_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
+    return df
 
 def get_signal(symbol, memory):
     try:
-        # 1. Clean Data Acquisition
-        df = yf.download(symbol, period="5d", interval="15m", progress=False, multi_level_index=False)
-        if df.empty: return memory
-        df.columns = [str(c).capitalize() for c in df.columns]
+        # Multi-Timeframe Fetch
+        df_1h = yf.download(symbol, period="1mo", interval="1h", progress=False, multi_level_index=False)
+        df_15m = yf.download(symbol, period="5d", interval="15m", progress=False, multi_level_index=False)
+        if df_1h.empty or df_15m.empty: return memory
+        for d in [df_1h, df_15m]: d.columns = [str(c).capitalize() for c in d.columns]
 
-        # 2. Indicator Core
-        df['ADX'], df['+DI'], df['-DI'] = calculate_adx(df)
-        df['Body'] = (df['Open'] - df['Close']).abs()
-        df['L_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
-        df['U_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
+        # 1H Metrics
+        df_1h = calculate_indicators(df_1h)
+        sig = df_1h.iloc[-2]  # Pattern
+        curr = df_1h.iloc[-1] # Confirmation
         
-        # 3. Woodie Pivot Check
-        d_df = yf.download(symbol, period="2d", interval="1d", progress=False, multi_level_index=False)
-        h, l, c = d_df.iloc[-1]['High'], d_df.iloc[-1]['Low'], d_df.iloc[-1]['Close']
-        pp = (h + l + 2*c)/4
+        # 15M Filter (EMA9)
+        df_15m['EMA9'] = df_15m['Close'].ewm(span=9, adjust=False).mean()
+        is_15m_bullish = df_15m['Close'].iloc[-1] > df_15m['EMA9'].iloc[-1]
 
-        sig = df.iloc[-2]  
-        curr = df.iloc[-1] 
-        adx_val = df['ADX'].iloc[-1]
-        trend_arrow = "🔼" if adx_val > df['ADX'].iloc[-2] else "🔽"
+        # REVERSAL LOGIC
+        # Loosened to 1.5x shadow for higher practicality
+        is_hammer = (sig['L_Shadow'] > sig['Body'] * 1.5) and (sig['U_Shadow'] < sig['Body'] * 0.7)
+        was_falling = df_1h['-DI'].iloc[-3:-1].mean() > 22
+        is_v_flip = was_falling and (curr['Close'] > sig['High'])
 
-        # Signal Logic
-        is_hammer = (sig['L_Shadow'] > sig['Body'] * 1.5) and (sig['U_Shadow'] < sig['Body'] * 0.6)
-        was_falling = df['-DI'].iloc[-2] > df['+DI'].iloc[-2]
-        is_v_reversal = was_falling and (curr['Close'] > sig['High']) and (sig['Low'] < pp * 1.003)
-
-        if symbol not in memory:
+        if symbol not in memory and is_15m_bullish:
             msg = ""
+            risk = max(sig['High'] - sig['Low'], curr['Close'] * 0.005) # Min risk 0.5%
+            t1, t2 = curr['Close'] + (risk * 2.0), curr['Close'] + (risk * 4.0)
+
             if is_hammer:
-                msg = f"🔨 *HAMMER: {symbol.replace('.NS','')}*\nStr: {adx_val:.1f} {trend_arrow}\n📍 *Zone:* Pivot"
-            elif is_v_reversal:
-                msg = f"🔄 *TREND FLIP: {symbol.replace('.NS','')}*\n📉 Exhaustion {trend_arrow}\n🚀 *Flip:* {curr['Close']:.2f} > {sig['High']:.2f}"
+                quality = "💎 ELITE" if sig['L_Shadow'] > sig['Body'] * 2.2 else "⚖️ REGULAR"
+                msg = f"🔨 *HOURLY HAMMER: {symbol.replace('.NS','')}*\nQuality: {quality}"
+            elif is_v_flip:
+                msg = f"🔄 *HOURLY TREND FLIP: {symbol.replace('.NS','')}*"
 
             if msg:
-                requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown", timeout=10)
+                alert = (f"{msg}\n✅ *MTF Filter:* 15M Bullish\n---------------------------\n"
+                         f"🟢 **ENTRY:** {curr['Close']:.2f}\n"
+                         f"🔴 **SL:** {sig['Low']:.2f}\n"
+                         f"🎯 **T1 (2R):** {t1:.2f}\n"
+                         f"🚀 **T2 (4R):** {t2:.2f}")
+                requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={alert}&parse_mode=Markdown")
                 memory[symbol] = {"time": datetime.now().isoformat()}
 
     except Exception: pass
     return memory
 
 if __name__ == "__main__":
-    initialize_files()
     if os.path.exists(MEMORY_FILE):
         with open(MEMORY_FILE, 'r') as f: mem = json.load(f)
     else: mem = {}
