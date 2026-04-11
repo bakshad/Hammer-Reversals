@@ -1,15 +1,14 @@
-name: Hybrid FNO Intelligence
+name: Elite MTF FNO Intelligence
 
 on:
   schedule:
-    # Runs during Indian Market Hours (9:15 AM - 3:30 PM IST)
-    - cron: '45 3 * * 1-5'
-    - cron: '0,15,30,45 4-9 * * 1-5'
-    - cron: '0 10 * * 1-5'
+    # Runs at 16 mins past the hour to ensure the candle is fully formed
+    # UTC 04:46 to 09:46 covers 10:16 AM to 3:16 PM IST
+    - cron: '46 4-9 * * 1-5'
   workflow_dispatch:
 
 jobs:
-  trade-scan:
+  mtf-scan:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -29,15 +28,13 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance pandas requests numpy
 
-      - name: Run Scanner
+      - name: Run MTF Scanner
         run: python reversal_bot_fno.py
 
-      - name: Sync Data and Logs
+      - name: Sync Data
         run: |
-          git config --global user.name "HybridBot-Action"
+          git config --global user.name "EliteBot-Action"
           git config --global user.email "bot@trading.com"
-          
-          # Force sync files - skip error if files haven't changed
-          git add alert_memory_fno_15m.json weekly_trade_summary.csv ml_training_data.csv || true
-          git commit -m "Sync Memory and Logs [skip ci]" || echo "Nothing to commit"
-          git push || echo "Push failed, will retry next run"
+          git add alert_memory_fno_mtf.json || true
+          git commit -m "Sync MTF Memory [skip ci]" || echo "No changes"
+          git push || echo "Retry next hour"
