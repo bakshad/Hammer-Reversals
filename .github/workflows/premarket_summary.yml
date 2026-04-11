@@ -1,0 +1,19 @@
+name: 9:10 AM Premarket Radar
+
+on:
+  schedule:
+    - cron: '40 3 * * 1-5' # 9:10 AM IST
+  workflow_dispatch:
+
+jobs:
+  premarket-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Premarket Analysis
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # This triggers your pre-market logic to scan GIFT Nifty 
+          # and top F&O OI gainers from the previous day.
+          python premarket_engine.py 
