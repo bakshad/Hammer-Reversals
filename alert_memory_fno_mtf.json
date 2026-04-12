@@ -100,5 +100,215 @@
     },
     "ZYDUSLIFE.NS": {
         "time": "2026-04-11T04:43:50.167458"
+    },
+    "^NSEBANK": {
+        "trigger": 55977.6484375,
+        "sl": 55649.94921875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BAJFINANCE.NS": {
+        "trigger": 925.8499755859375,
+        "sl": 913.7000122070312,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BRITANNIA.NS": {
+        "trigger": 5558.5,
+        "sl": 5512.5,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "CANFINHOME.NS": {
+        "trigger": 844.7999877929688,
+        "sl": 840.4500122070312,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "COALINDIA.NS": {
+        "trigger": 437.70001220703125,
+        "sl": 431.25,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "COFORGE.NS": {
+        "trigger": 1227.0,
+        "sl": 1217.199951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "CROMPTON.NS": {
+        "trigger": 241.99000549316406,
+        "sl": 240.9199981689453,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "DIXON.NS": {
+        "trigger": 10703.0,
+        "sl": 10606.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "DLF.NS": {
+        "trigger": 569.6500244140625,
+        "sl": 565.4000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "GMRAIRPORT.NS": {
+        "trigger": 95.41999816894531,
+        "sl": 94.41000366210938,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "GRANULES.NS": {
+        "trigger": 633.75,
+        "sl": 629.7999877929688,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HCLTECH.NS": {
+        "trigger": 1454.199951171875,
+        "sl": 1440.0999755859375,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HDFCBANK.NS": {
+        "trigger": 811.9000244140625,
+        "sl": 807.2999877929688,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HDFCLIFE.NS": {
+        "trigger": 605.2999877929688,
+        "sl": 598.1500244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "INDIGO.NS": {
+        "trigger": 4561.60009765625,
+        "sl": 4516.7001953125,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "INDUSINDBK.NS": {
+        "trigger": 833.0,
+        "sl": 827.2999877929688,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "INDUSTOWER.NS": {
+        "trigger": 438.95001220703125,
+        "sl": 433.8500061035156,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "INFY.NS": {
+        "trigger": 1295.0999755859375,
+        "sl": 1287.4000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "KOTAKBANK.NS": {
+        "trigger": 375.20001220703125,
+        "sl": 372.3500061035156,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "LICHSGFIN.NS": {
+        "trigger": 532.6500244140625,
+        "sl": 529.2999877929688,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "M&M.NS": {
+        "trigger": 3269.0,
+        "sl": 3235.800048828125,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "MANAPPURAM.NS": {
+        "trigger": 268.29998779296875,
+        "sl": 265.8999938964844,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "MARUTI.NS": {
+        "trigger": 13750.0,
+        "sl": 13641.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "MPHASIS.NS": {
+        "trigger": 2332.39990234375,
+        "sl": 2320.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "PETRONET.NS": {
+        "trigger": 270.92999267578125,
+        "sl": 269.010009765625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "PVRINOX.NS": {
+        "trigger": 950.0,
+        "sl": 943.5,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "RELIANCE.NS": {
+        "trigger": 1352.199951171875,
+        "sl": 1342.5,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "SBICARD.NS": {
+        "trigger": 678.25,
+        "sl": 673.75,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "SHREECEM.NS": {
+        "trigger": 24415.0,
+        "sl": 24250.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "SUNPHARMA.NS": {
+        "trigger": 1656.5999755859375,
+        "sl": 1649.699951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "TATAELXSI.NS": {
+        "trigger": 4452.60009765625,
+        "sl": 4415.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "TCS.NS": {
+        "trigger": 2527.300048828125,
+        "sl": 2511.199951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "TECHM.NS": {
+        "trigger": 1441.5,
+        "sl": 1431.5,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "UBL.NS": {
+        "trigger": 1455.699951171875,
+        "sl": 1452.199951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ULTRACEMCO.NS": {
+        "trigger": 11599.0,
+        "sl": 11537.0,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
     }
 }
