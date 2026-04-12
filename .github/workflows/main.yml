@@ -1,30 +1,49 @@
-name: Elite Reversal Intelligence
+name: F&O Final Entry Engine
 
 on:
   schedule:
-    # Runs every 15 mins during IST market hours
-    - cron: '*/15 3-10 * * 1-5'
-  workflow_dispatch:
+    # 1. Premarket Radar at 9:10 AM IST (03:40 UTC)
+    - cron: '40 3 * * 1-5'
+    # 2. Main Execution every 15 mins from 9:15 AM to 3:30 PM IST (03:45 - 10:00 UTC)
+    - cron: '*/15 4-10 * * 1-5'
+  workflow_dispatch: # Allows manual trigger for testing
 
 jobs:
-  scan-and-alert:
+  run-trading-bot:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Dependencies
+
+      - name: Install Dependencies
         run: pip install yfinance pandas requests numpy
-      - name: Run Bot
+
+      # --- STEP 1: PREMARKET RADAR (Only at 9:10 AM IST) ---
+      - name: 🌅 9:10 AM Premarket Radar
+        if: github.event.schedule == '40 3 * * 1-5'
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python premarket_engine.py
+
+      # --- STEP 2: MAIN SCANNER (Final Alerts Only) ---
+      - name: 🚀 Final Entry Scanner
+        if: github.event.schedule != '40 3 * * 1-5'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python reversal_bot_fno.py
-      - name: Save Memory
+
+      # --- STEP 3: SYNC DATA ---
+      - name: 📂 Sync Memory
         run: |
-          git config --global user.name "EliteBot"
+          git config --global user.name "TradingBot"
           git config --global user.email "bot@trading.com"
-          git add alert_memory_fno_mtf.json || true
-          git commit -m "Sync Memory" || echo "No changes"
-          git push || echo "Retry later"
+          git add alert_memory_fno_mtf.json ml_training_data.csv || true
+          git commit -m "Sync Memory/ML Logs [skip ci]" || echo "No changes"
+          git push || echo "Sync failed"
