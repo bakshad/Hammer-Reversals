@@ -11,15 +11,15 @@ from datetime import datetime
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_status.json"
-WEEKLY_LOG = "weekly_trade_summary.csv"
+ML_LOG = "ml_training_data.csv"
 
 # Updated April 2026 F&O Universe (Indices + ~200 Stocks)
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", 
     # New April 2026 Entrants
     "ADANIPOWER.NS", "COCHINSHIP.NS", "FORCEMOT.NS", "GODFRYPHLP.NS", 
-    "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS",
-    # Major F&O Stocks
+    "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS", "SWIGGY.NS",
+    # Core F&O List
     "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", 
     "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", 
     "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", 
@@ -51,83 +51,91 @@ SYMBOLS = [
     "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAMOTORS.NS", "TATAPOWER.NS", 
     "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", 
     "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", 
-    "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS", "SWIGGY.NS"
+    "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
-def load_memory():
-    if os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, 'r') as f:
-            try: return json.load(f)
-            except: return {}
-    return {}
+def log_ml_data(data):
+    file_exists = os.path.isfile(ML_LOG)
+    with open(ML_LOG, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=data.keys())
+        if not file_exists: writer.writeheader()
+        writer.writerow(data)
 
-def save_memory(memory):
-    with open(MEMORY_FILE, 'w') as f:
-        json.dump(memory, f, indent=4)
+def calculate_woodie_pivots(symbol):
+    try:
+        df_daily = yf.download(symbol, period="2d", interval="1d", progress=False)
+        if len(df_daily) < 2: return None
+        prev = df_daily.iloc[-2]
+        h, l, c = prev['High'], prev['Low'], prev['Close']
+        pp = (h + l + 2 * c) / 4
+        return {"R1": (2 * pp) - l, "PP": pp, "S1": (2 * pp) - h}
+    except: return None
 
-def send_alert(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown"
-    try: requests.get(url, timeout=10)
-    except: pass
+def is_hammer_star(candle):
+    body = abs(candle['Open'] - candle['Close'])
+    l_shadow = min(candle['Open'], candle['Close']) - candle['Low']
+    u_shadow = candle['High'] - max(candle['Open'], candle['Close'])
+    hammer = (l_shadow > body * 1.3 and u_shadow < body * 0.8)
+    star = (u_shadow > body * 1.3 and l_shadow < body * 0.8)
+    return hammer, star
 
 def get_signal(symbol, memory):
     try:
-        # Increase period to ensure indicators have enough warm-up data
         df = yf.download(symbol, period="15d", interval="15m", progress=False)
-        if df.empty: return memory
+        pivots = calculate_woodie_pivots(symbol)
+        if df.empty or not pivots: return memory
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
-        # 1. Indicators
         df['EMA9'] = df['Close'].ewm(span=9).mean()
         df['EMA50'] = df['Close'].ewm(span=50).mean()
-        df['Body'] = (df['Open'] - df['Close']).abs()
-        df['L_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
-        df['U_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
         
-        sig, curr, ts = df.iloc[-2], df.iloc[-1], str(df.index[-2])
+        lookback = df.iloc[-5:-1] 
+        sig, curr = df.iloc[-2], df.iloc[-1]
+        ts = str(df.index[-2])
         
-        # 2. Pattern Logic
-        l_ratio = sig['L_Shadow'] / (sig['Body'] + 1e-9)
-        u_ratio = sig['U_Shadow'] / (sig['Body'] + 1e-9)
-        
-        is_hammer = (l_ratio > 1.3) and (u_ratio < 0.8)
-        is_bull_vflip = (sig['Close'] < sig['Open']) and (curr['Close'] > sig['High'])
-        is_star = (u_ratio > 1.3) and (l_ratio < 0.8)
-        is_bear_vflip = (sig['Close'] > sig['Open']) and (curr['Close'] < sig['Low'])
+        # 1. Price Action Base (Hammer/Star in last 4 candles)
+        has_hammer_base = any([is_hammer_star(lookback.iloc[i])[0] for i in range(len(lookback))])
+        has_star_base = any([is_hammer_star(lookback.iloc[i])[1] for i in range(len(lookback))])
 
-        if not (is_hammer or is_star or is_bull_vflip or is_bear_vflip): return memory
+        # 2. V-Flip Structure
+        prior_swing_high, prior_swing_low = lookback['High'].max(), lookback['Low'].min()
+        is_bull_vflip = (lookback['Low'].iloc[-1] < lookback['Low'].iloc[0]) and (curr['Close'] > prior_swing_high) and has_hammer_base
+        is_bear_vflip = (lookback['High'].iloc[-1] > lookback['High'].iloc[0]) and (curr['Close'] < prior_swing_low) and has_star_base
 
-        # 3. Ride Strategy (Trend Aligned?)
-        is_long = is_hammer or is_bull_vflip
-        is_aligned = (curr['Close'] > sig['EMA50']) if is_long else (curr['Close'] < sig['EMA50'])
-        conviction = "🚀 TREND RIDER" if is_aligned else "🔄 REVERSAL"
-
-        c_key = f"{symbol}_{ts}_confirmed"
-
-        if c_key not in memory:
-            confirmed = (is_long and curr['Close'] > sig['High']) or (not is_long and curr['Close'] < sig['Low'])
+        if (is_bull_vflip or is_bear_vflip) and f"{symbol}_{ts}" not in memory:
+            # Pivot Confluence
+            near_s1 = abs(lookback['Low'].min() - pivots['S1']) / pivots['S1'] < 0.0015
+            near_r1 = abs(lookback['High'].max() - pivots['R1']) / pivots['R1'] < 0.0015
             
-            if confirmed:
-                side = "🟢 BUY" if is_long else "🔴 SELL"
-                pattern = "Hammer/V-Flip" if is_long else "Star/V-Flip"
-                
-                msg = (f"🎯 **{side} CONFIRMED: {symbol.replace('.NS', '')}**\n"
-                       f"Mode: {conviction}\n"
-                       f"Pattern: {pattern}\n"
-                       f"---------------------------\n"
-                       f"💰 **Entry:** {curr['Close']:.2f}\n"
-                       f"🛡️ **Initial SL:** {sig['Low'] if is_long else sig['High']:.2f}\n"
-                       f"📈 **Trail SL (EMA9):** {curr['EMA9']:.2f}\n\n"
-                       f"⚡ *Plan:* Ride the trend! Exit only when price closes back across EMA9.")
-                
-                send_alert(msg)
-                memory[c_key] = True
+            quality = "💎 ELITE (Pivot + PA)" if (near_s1 or near_r1) else "🚀 HIGH (V-PA Confirmed)"
+            side = "🟢 BUY" if is_bull_vflip else "🔴 SELL"
+            
+            # ML Logging
+            log_ml_data({
+                "Timestamp": ts, "Symbol": symbol, "Side": side, "Quality": quality,
+                "Entry": round(curr['Close'], 2), "EMA9": round(curr['EMA9'], 2)
+            })
+
+            msg = (f"🎯 **{side}: {symbol.replace('.NS', '')}**\n"
+                   f"---------------------------\n"
+                   f"📊 **Quality:** {quality}\n"
+                   f"🧩 **Logic:** Hammer-Base V-Flip\n"
+                   f"💰 **Entry:** {curr['Close']:.2f}\n"
+                   f"🛡️ **SL:** {lookback['Low'].min() if is_bull_vflip else lookback['High'].max():.2f}\n"
+                   f"📈 **Trail SL (EMA9):** {curr['EMA9']:.2f}\n"
+                   f"---------------------------\n"
+                   f"🎯 **T1 (Woodie PP):** {pivots['PP']:.2f}")
+            
+            requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown")
+            memory[f"{symbol}_{ts}"] = True
 
     except Exception: pass
     return memory
 
 if __name__ == "__main__":
-    current_mem = load_memory()
-    for s in SYMBOLS:
-        current_mem = get_signal(s, current_mem)
-    save_memory(current_mem)
+    if os.path.exists(MEMORY_FILE):
+        with open(MEMORY_FILE, 'r') as f: mem = json.load(f)
+    else: mem = {}
+    for s in SYMBOLS: mem = get_signal(s, mem)
+    with open(MEMORY_FILE, 'w') as f: json.dump(mem, f, indent=4)
+ 
