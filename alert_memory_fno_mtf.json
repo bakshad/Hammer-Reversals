@@ -183,7 +183,7 @@
         "trigger": 605.2999877929688,
         "sl": 598.1500244140625,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "INDIGO.NS": {
         "trigger": 4561.60009765625,
@@ -345,7 +345,7 @@
         "trigger": 476.3999938964844,
         "sl": 474.20001220703125,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "BANDHANBNK.NS": {
         "trigger": 167.4499969482422,
@@ -363,13 +363,13 @@
         "trigger": 345.29998779296875,
         "sl": 343.79998779296875,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "BPCL.NS": {
         "trigger": 293.3999938964844,
         "sl": 291.3999938964844,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "BSOFT.NS": {
         "trigger": 366.0,
@@ -387,7 +387,7 @@
         "trigger": 1439.0,
         "sl": 1430.0,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "COLPAL.NS": {
         "trigger": 1925.5999755859375,
@@ -417,7 +417,7 @@
         "trigger": 1479.5,
         "sl": 1464.9000244140625,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "EICHERMOT.NS": {
         "trigger": 7076.0,
@@ -471,7 +471,7 @@
         "trigger": 350.3500061035156,
         "sl": 347.3999938964844,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "HYUNDAI.NS": {
         "trigger": 1754.5999755859375,
@@ -489,7 +489,7 @@
         "trigger": 546.7999877929688,
         "sl": 543.4000244140625,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "IDFCFIRSTB.NS": {
         "trigger": 65.0999984741211,
@@ -525,7 +525,7 @@
         "trigger": 1223.0999755859375,
         "sl": 1216.0,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "JKCEMENT.NS": {
         "trigger": 5510.0,
