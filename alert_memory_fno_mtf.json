@@ -303,12 +303,366 @@
         "trigger": 1455.699951171875,
         "sl": 1452.199951171875,
         "type": "\ud83d\udd04 POTENTIAL V-FLIP",
-        "active": false
+        "active": true
     },
     "ULTRACEMCO.NS": {
         "trigger": 11599.0,
         "sl": 11537.0,
         "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "ADANIENT.NS": {
+        "trigger": 2138.89990234375,
+        "sl": 2123.199951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ADANIPORTS.NS": {
+        "trigger": 1472.300048828125,
+        "sl": 1461.0999755859375,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ASIANPAINT.NS": {
+        "trigger": 2362.199951171875,
+        "sl": 2350.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ATUL.NS": {
+        "trigger": 6336.0,
+        "sl": 6305.5,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "AUBANK.NS": {
+        "trigger": 981.8499755859375,
+        "sl": 978.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BALRAMCHIN.NS": {
+        "trigger": 476.3999938964844,
+        "sl": 474.20001220703125,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BANDHANBNK.NS": {
+        "trigger": 167.4499969482422,
+        "sl": 166.3000030517578,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BEL.NS": {
+        "trigger": 444.0,
+        "sl": 441.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BIOCON.NS": {
+        "trigger": 345.29998779296875,
+        "sl": 343.79998779296875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BPCL.NS": {
+        "trigger": 293.3999938964844,
+        "sl": 291.3999938964844,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "BSOFT.NS": {
+        "trigger": 366.0,
+        "sl": 364.79998779296875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "CIPLA.NS": {
+        "trigger": 1212.5999755859375,
+        "sl": 1210.4000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "COCHINSHIP.NS": {
+        "trigger": 1439.0,
+        "sl": 1430.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "COLPAL.NS": {
+        "trigger": 1925.5999755859375,
+        "sl": 1913.5999755859375,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "CONCOR.NS": {
+        "trigger": 482.5,
+        "sl": 479.8500061035156,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "COROMANDEL.NS": {
+        "trigger": 2113.800048828125,
+        "sl": 2089.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "DABUR.NS": {
+        "trigger": 428.8500061035156,
+        "sl": 423.75,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "DEEPAKNTR.NS": {
+        "trigger": 1479.5,
+        "sl": 1464.9000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "EICHERMOT.NS": {
+        "trigger": 7076.0,
+        "sl": 7050.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "FORCEMOT.NS": {
+        "trigger": 22362.0,
+        "sl": 22000.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "GAIL.NS": {
+        "trigger": 153.94000244140625,
+        "sl": 153.35000610351562,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "GODREJCP.NS": {
+        "trigger": 1065.300048828125,
+        "sl": 1058.0999755859375,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HAVELLS.NS": {
+        "trigger": 1281.699951171875,
+        "sl": 1272.4000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HEROMOTOCO.NS": {
+        "trigger": 5257.0,
+        "sl": 5212.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HINDALCO.NS": {
+        "trigger": 981.5,
+        "sl": 976.75,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HINDCOPPER.NS": {
+        "trigger": 531.0,
+        "sl": 525.6500244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HINDPETRO.NS": {
+        "trigger": 350.3500061035156,
+        "sl": 347.3999938964844,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "HYUNDAI.NS": {
+        "trigger": 1754.5999755859375,
+        "sl": 1740.4000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ICICIGI.NS": {
+        "trigger": 1790.4000244140625,
+        "sl": 1772.5,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ICICIPRULI.NS": {
+        "trigger": 546.7999877929688,
+        "sl": 543.4000244140625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "IDFCFIRSTB.NS": {
+        "trigger": 65.0999984741211,
+        "sl": 64.5999984741211,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "IEX.NS": {
+        "trigger": 129.74000549316406,
+        "sl": 128.97999572753906,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "INDIACEM.NS": {
+        "trigger": 381.8500061035156,
+        "sl": 378.6000061035156,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "INDIAMART.NS": {
+        "trigger": 2111.800048828125,
+        "sl": 2104.10009765625,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "ITC.NS": {
+        "trigger": 299.25,
+        "sl": 298.1000061035156,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "JINDALSTEL.NS": {
+        "trigger": 1223.0999755859375,
+        "sl": 1216.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "JKCEMENT.NS": {
+        "trigger": 5510.0,
+        "sl": 5440.5,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "JSWSTEEL.NS": {
+        "trigger": 1209.0,
+        "sl": 1203.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "LALPATHLAB.NS": {
+        "trigger": 1389.0,
+        "sl": 1376.699951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "MOTILALOFS.NS": {
+        "trigger": 762.0499877929688,
+        "sl": 756.2999877929688,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "MRF.NS": {
+        "trigger": 135150.0,
+        "sl": 134400.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "MUTHOOTFIN.NS": {
+        "trigger": 3575.5,
+        "sl": 3547.800048828125,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "NATIONALUM.NS": {
+        "trigger": 418.79998779296875,
+        "sl": 416.29998779296875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "NAVINFLUOR.NS": {
+        "trigger": 6248.0,
+        "sl": 6227.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "NESTLEIND.NS": {
+        "trigger": 1229.9000244140625,
+        "sl": 1224.800048828125,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "OBEROIRLTY.NS": {
+        "trigger": 1691.0999755859375,
+        "sl": 1683.0999755859375,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "ONGC.NS": {
+        "trigger": 288.0,
+        "sl": 286.29998779296875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "PIDILITIND.NS": {
+        "trigger": 1333.9000244140625,
+        "sl": 1325.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "PIIND.NS": {
+        "trigger": 2923.89990234375,
+        "sl": 2904.0,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "POLYCAB.NS": {
+        "trigger": 7600.5,
+        "sl": 7539.5,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "RECLTD.NS": {
+        "trigger": 347.70001220703125,
+        "sl": 345.3999938964844,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "SAIL.NS": {
+        "trigger": 169.27999877929688,
+        "sl": 167.4499969482422,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "SBILIFE.NS": {
+        "trigger": 1920.0,
+        "sl": 1909.5999755859375,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "TATACONSUM.NS": {
+        "trigger": 1092.199951171875,
+        "sl": 1088.0999755859375,
+        "type": "\ud83d\udd28 HAMMER",
+        "active": false
+    },
+    "TATASTEEL.NS": {
+        "trigger": 207.0,
+        "sl": 205.13999938964844,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "TRENT.NS": {
+        "trigger": 3895.0,
+        "sl": 3865.699951171875,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "TVSMOTOR.NS": {
+        "trigger": 3750.89990234375,
+        "sl": 3730.800048828125,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "UPL.NS": {
+        "trigger": 646.4000244140625,
+        "sl": 640.0999755859375,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
+        "active": false
+    },
+    "WIPRO.NS": {
+        "trigger": 203.1999969482422,
+        "sl": 202.0500030517578,
+        "type": "\ud83d\udd04 POTENTIAL V-FLIP",
         "active": false
     }
 }
