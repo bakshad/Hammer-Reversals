@@ -1,49 +1,36 @@
-name: F&O Final Entry Engine
+name: 🚀 F&O Hourly Execution Engine
 
 on:
   schedule:
-    # 1. Premarket Radar at 9:10 AM IST (03:40 UTC)
-    - cron: '40 3 * * 1-5'
-    # 2. Main Execution every 15 mins from 9:15 AM to 3:30 PM IST (03:45 - 10:00 UTC)
-    - cron: '*/15 4-10 * * 1-5'
-  workflow_dispatch: # Allows manual trigger for testing
+    # Runs at 16 mins past the hour (IST to UTC conversion)
+    # 10:16 AM IST -> 04:46 UTC
+    # 11:16 AM IST -> 05:46 UTC
+    # 12:16 PM IST -> 06:46 UTC
+    # 01:16 PM IST -> 07:46 UTC
+    # 02:16 PM IST -> 08:46 UTC
+    # 03:16 PM IST -> 09:46 UTC
+    - cron: '46 4,5,6,7,8,9 * * 1-5'
+  workflow_dispatch:
 
 jobs:
-  run-trading-bot:
+  scanner:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install Dependencies
+      - name: Dependencies
         run: pip install yfinance pandas requests numpy
-
-      # --- STEP 1: PREMARKET RADAR (Only at 9:10 AM IST) ---
-      - name: 🌅 9:10 AM Premarket Radar
-        if: github.event.schedule == '40 3 * * 1-5'
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python premarket_engine.py
-
-      # --- STEP 2: MAIN SCANNER (Final Alerts Only) ---
-      - name: 🚀 Final Entry Scanner
-        if: github.event.schedule != '40 3 * * 1-5'
+      - name: Run Hourly Scanner
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python reversal_bot_fno.py
-
-      # --- STEP 3: SYNC DATA ---
-      - name: 📂 Sync Memory
+      - name: Sync Memory
         run: |
-          git config --global user.name "TradingBot"
+          git config --global user.name "TradeBot"
           git config --global user.email "bot@trading.com"
           git add alert_memory_fno_mtf.json ml_training_data.csv || true
-          git commit -m "Sync Memory/ML Logs [skip ci]" || echo "No changes"
+          git commit -m "Sync Hourly Data [skip ci]" || echo "No changes"
           git push || echo "Sync failed"
