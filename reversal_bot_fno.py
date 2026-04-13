@@ -11,48 +11,33 @@ from datetime import datetime
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_status.json"
+POSITIONS_FILE = "active_positions.json" # Tracks open trades
 ML_LOG = "ml_training_data.csv"
+TRADE_LOG = "weekly_trade_summary.csv" # Logs finished trades
 
-# Updated April 2026 F&O Universe (Indices + ~200 Stocks)
+# April 2026 F&O Universe (Keep your full list here)
 SYMBOLS = [
-    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", 
-    # New April 2026 Entrants
-    "ADANIPOWER.NS", "COCHINSHIP.NS", "FORCEMOT.NS", "GODFRYPHLP.NS", 
-    "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS", "SWIGGY.NS",
-    # Core F&O List
-    "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", 
-    "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", 
-    "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", 
-    "ATUL.NS", "AUBANK.NS", "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", 
-    "BAJAJFINSV.NS", "BAJFINANCE.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", 
-    "BANKBARODA.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", 
-    "BHEL.NS", "BIOCON.NS", "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", 
-    "CANBK.NS", "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", 
-    "COALINDIA.NS", "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", 
-    "CROMPTON.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", "DEEPAKNTR.NS", 
-    "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", 
-    "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", 
-    "GMRAIRPORT.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", 
-    "GRASIM.NS", "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", 
-    "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", "HINDPETRO.NS", 
-    "HINDUNILVR.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFC.NS", 
-    "IDFCFIRSTB.NS", "IEX.NS", "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", 
-    "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "IPCALAB.NS", 
-    "IRCTC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", 
-    "KOTAKBANK.NS", "L&TFH.NS", "LALPATHLAB.NS", "LICHSGFIN.NS", "LTIM.NS", "LT.NS", 
-    "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", 
-    "MCDOWELL-N.NS", "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MPHASIS.NS", 
-    "MRF.NS", "MUTHOOTFIN.NS", "NATIONALUM.NS", "NAVINFLUOR.NS", "NESTLEIND.NS", 
-    "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "ONGC.NS", "PAGEIND.NS", "PEL.NS", 
-    "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", 
-    "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RECLTD.NS", 
-    "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", 
-    "SHRIRAMFIN.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", "SYNGENE.NS", 
-    "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAMOTORS.NS", "TATAPOWER.NS", 
-    "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", 
-    "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", 
-    "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
+    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "ADANIPOWER.NS", "COCHINSHIP.NS", 
+    "FORCEMOT.NS", "GODFRYPHLP.NS", "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", 
+    "VMM.NS", "SWIGGY.NS", "RELIANCE.NS", "HDFCBANK.NS", "SBIN.NS", "ICICIBANK.NS"
+    # ... rest of your symbols
 ]
+
+def load_json(filename):
+    if os.path.exists(filename):
+        with open(filename, 'r') as f:
+            try: return json.load(f)
+            except: return {}
+    return {}
+
+def save_json(data, filename):
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def send_telegram(msg):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown"
+    try: requests.get(url, timeout=10)
+    except: pass
 
 def log_ml_data(data):
     file_exists = os.path.isfile(ML_LOG)
@@ -79,11 +64,55 @@ def is_hammer_star(candle):
     star = (u_shadow > body * 1.3 and l_shadow < body * 0.8)
     return hammer, star
 
-def get_signal(symbol, memory):
+def manage_positions(positions):
+    """Monitors active trades for EMA9 crossover exit."""
+    updated_positions = positions.copy()
+    
+    for symbol, trade in positions.items():
+        try:
+            df = yf.download(symbol, period="2d", interval="15m", progress=False)
+            if df.empty: continue
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+            
+            df['EMA9'] = df['Close'].ewm(span=9).mean()
+            curr = df.iloc[-1]
+            
+            exit_triggered = False
+            if trade['Side'] == "🟢 BUY" and curr['Close'] < curr['EMA9']:
+                exit_triggered = True
+            elif trade['Side'] == "🔴 SELL" and curr['Close'] > curr['EMA9']:
+                exit_triggered = True
+            
+            if exit_triggered:
+                points = round(curr['Close'] - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr['Close'], 2)
+                pct = round((points / trade['Entry']) * 100, 2)
+                emoji = "💰" if points > 0 else "🛑"
+                
+                msg = (f"{emoji} **EXIT ALERT: {symbol.replace('.NS','')}**\n"
+                       f"Side: {trade['Side']}\n"
+                       f"Entry: {trade['Entry']:.2f} | Exit: {curr['Close']:.2f}\n"
+                       f"**Captured: {points} pts ({pct}%)**")
+                
+                send_telegram(msg)
+                
+                # Log to Weekly CSV
+                file_exists = os.path.isfile(TRADE_LOG)
+                with open(TRADE_LOG, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    if not file_exists: writer.writerow(["Date", "Symbol", "Side", "Entry", "Exit", "Pts", "Pct"])
+                    writer.writerow([datetime.now().strftime("%Y-%m-%d"), symbol, trade['Side'], trade['Entry'], curr['Close'], points, pct])
+                
+                del updated_positions[symbol]
+        except Exception as e:
+            print(f"Error managing {symbol}: {e}")
+            
+    return updated_positions
+
+def get_signal(symbol, memory, positions):
     try:
         df = yf.download(symbol, period="15d", interval="15m", progress=False)
         pivots = calculate_woodie_pivots(symbol)
-        if df.empty or not pivots: return memory
+        if df.empty or not pivots: return memory, positions
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
         df['EMA9'] = df['Close'].ewm(span=9).mean()
@@ -93,24 +122,21 @@ def get_signal(symbol, memory):
         sig, curr = df.iloc[-2], df.iloc[-1]
         ts = str(df.index[-2])
         
-        # 1. Price Action Base (Hammer/Star in last 4 candles)
         has_hammer_base = any([is_hammer_star(lookback.iloc[i])[0] for i in range(len(lookback))])
         has_star_base = any([is_hammer_star(lookback.iloc[i])[1] for i in range(len(lookback))])
 
-        # 2. V-Flip Structure
         prior_swing_high, prior_swing_low = lookback['High'].max(), lookback['Low'].min()
         is_bull_vflip = (lookback['Low'].iloc[-1] < lookback['Low'].iloc[0]) and (curr['Close'] > prior_swing_high) and has_hammer_base
         is_bear_vflip = (lookback['High'].iloc[-1] > lookback['High'].iloc[0]) and (curr['Close'] < prior_swing_low) and has_star_base
 
-        if (is_bull_vflip or is_bear_vflip) and f"{symbol}_{ts}" not in memory:
-            # Pivot Confluence
+        # Only signal if not already in memory AND not already in an active position
+        if (is_bull_vflip or is_bear_vflip) and f"{symbol}_{ts}" not in memory and symbol not in positions:
             near_s1 = abs(lookback['Low'].min() - pivots['S1']) / pivots['S1'] < 0.0015
             near_r1 = abs(lookback['High'].max() - pivots['R1']) / pivots['R1'] < 0.0015
             
             quality = "💎 ELITE (Pivot + PA)" if (near_s1 or near_r1) else "🚀 HIGH (V-PA Confirmed)"
             side = "🟢 BUY" if is_bull_vflip else "🔴 SELL"
             
-            # ML Logging
             log_ml_data({
                 "Timestamp": ts, "Symbol": symbol, "Side": side, "Quality": quality,
                 "Entry": round(curr['Close'], 2), "EMA9": round(curr['EMA9'], 2)
@@ -126,16 +152,23 @@ def get_signal(symbol, memory):
                    f"---------------------------\n"
                    f"🎯 **T1 (Woodie PP):** {pivots['PP']:.2f}")
             
-            requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown")
+            send_telegram(msg)
             memory[f"{symbol}_{ts}"] = True
+            positions[symbol] = {"Entry": curr['Close'], "Side": side, "Time": datetime.now().isoformat()}
 
     except Exception: pass
-    return memory
+    return memory, positions
 
 if __name__ == "__main__":
-    if os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, 'r') as f: mem = json.load(f)
-    else: mem = {}
-    for s in SYMBOLS: mem = get_signal(s, mem)
-    with open(MEMORY_FILE, 'w') as f: json.dump(mem, f, indent=4)
- 
+    mem = load_json(MEMORY_FILE)
+    positions = load_json(POSITIONS_FILE)
+    
+    # 1. First, check and exit old trades
+    positions = manage_positions(positions)
+    
+    # 2. Then, scan for new entries
+    for s in SYMBOLS:
+        mem, positions = get_signal(s, mem, positions)
+        
+    save_json(mem, MEMORY_FILE)
+    save_json(positions, POSITIONS_FILE)
