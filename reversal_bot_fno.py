@@ -11,8 +11,39 @@ TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_memory_fno_mtf.json"
 
-# Complete April 2026 F&O Universe (Subset shown - keep your full 223+ list)
-SYMBOLS = ["^NSEI", "^NSEBANK", "ADANIPOWER.NS", "COCHINSHIP.NS", "HYUNDAI.NS", "ASHOKLEY.NS", "RELIANCE.NS", "HDFCBANK.NS"]
+# Full April 2026 F&O Universe (184 Symbols)
+SYMBOLS = [
+    "^NSEI", "^NSEBANK", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", 
+    "ADANIENT.NS", "ADANIPORTS.NS", "ADANIPOWER.NS", "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", 
+    "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", "AUBANK.NS", 
+    "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", 
+    "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", "BANKBARODA.NS", "BATAINDIA.NS", 
+    "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", "BIOCON.NS", 
+    "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", "CANBK.NS", "CANFINHOME.NS", 
+    "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", "COCHINSHIP.NS", "COFORGE.NS", 
+    "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", "CROMPTON.NS", "CUB.NS", "CUMMINSIND.NS", 
+    "DABUR.NS", "DALBHARAT.NS", "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", 
+    "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", 
+    "GAIL.NS", "GLENMARK.NS", "GMRINFRA.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", 
+    "GRANULES.NS", "GRASIM.NS", "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", 
+    "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", 
+    "HINDPETRO.NS", "HINDUNILVR.NS", "HUDCO.NS", "HYUNDAI.NS", "ICICIBANK.NS", "ICICIGI.NS", 
+    "ICICIPRULI.NS", "IDFCFIRSTB.NS", "IEX.NS", "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", 
+    "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", 
+    "IPCALAB.NS", "IRCTC.NS", "IREDA.NS", "IRFC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", 
+    "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS", "LALPATHLAB.NS", "LAURUSLABS.NS", "LICHSGFIN.NS", 
+    "LTIM.NS", "LT.NS", "LTTS.NS", "LUPIN.NS", "M&MFIN.NS", "M&M.NS", "MANAPPURAM.NS", 
+    "MARICO.NS", "MARUTI.NS", "MAXHEALTH.NS", "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", 
+    "MOTHERSON.NS", "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS", "NATIONALUM.NS", "NAVINFLUOR.NS", 
+    "NESTLEIND.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "OFSS.NS", "ONGC.NS", "PAGEIND.NS", 
+    "PEL.NS", "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", 
+    "POLYCAB.NS", "POWERTGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RBLBANK.NS", "RECLTD.NS", 
+    "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SHRIRAMFIN.NS", 
+    "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", "SYNGENE.NS", "TATACHEMICAL.NS", 
+    "TATACOMM.NS", "TATACONSUM.NS", "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", 
+    "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", 
+    "UPL.NS", "VEDL.NS", "VOLTAS.NS", "WIPRO.NS", "YESBANK.NS", "ZEEL.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
+]
 
 def get_market_mood():
     try:
@@ -25,12 +56,10 @@ def get_market_mood():
 def calculate_master_metrics(df):
     n = 14
     df = df.copy()
-    # Shadow/Body for Hammer & Star
     df['Body'] = (df['Open'] - df['Close']).abs()
     df['L_Shadow'] = df[['Open', 'Close']].min(axis=1) - df['Low']
     df['U_Shadow'] = df['High'] - df[['Open', 'Close']].max(axis=1)
     
-    # ADX/DI for V-Shape Trend Flips
     df['up'] = df['High'] - df['High'].shift(1)
     df['dn'] = df['Low'].shift(1) - df['Low']
     df['+dm'] = np.where((df['up'] > df['dn']) & (df['up'] > 0), df['up'], 0)
@@ -40,7 +69,6 @@ def calculate_master_metrics(df):
     df['+DI'] = 100 * (df['+dm'].rolling(n).mean() / (atr + 1e-9))
     df['-DI'] = 100 * (df['-dm'].rolling(n).mean() / (atr + 1e-9))
     
-    # Vol/OI & Fibonacci
     df['Vol_Ratio'] = df['Volume'] / df['Volume'].rolling(20).mean()
     rh, rl = df['High'].rolling(40).max(), df['Low'].rolling(40).min()
     df['Fib_618'] = rh - (0.618 * (rh - rl))
@@ -56,11 +84,9 @@ def get_signal(symbol, memory, mood):
         df_1h = calculate_master_metrics(df_1h)
         sig, curr = df_1h.iloc[-2], df_1h.iloc[-1]
         
-        # --- PATTERNS ---
         is_hammer = (sig['L_Shadow'] > sig['Body'] * 1.5) and (sig['U_Shadow'] < sig['Body'] * 0.7)
         is_v_flip = (df_1h['-DI'].iloc[-3:-1].mean() > 25) and (curr['Close'] > sig['High'])
         
-        # --- MOMENTUM ARROW (15M EMA9 Slope) ---
         ema9_15m = df_15m['Close'].ewm(span=9, adjust=False).mean()
         m_arrow = "📈" if ema9_15m.iloc[-1] > ema9_15m.iloc[-2] else "📉"
         is_15m_bullish = df_15m['Close'].iloc[-1] > ema9_15m.iloc[-1]
@@ -69,7 +95,6 @@ def get_signal(symbol, memory, mood):
             pattern_label = "🔨 HAMMER BOUNCE" if is_hammer else "🔄 V-SHAPE FLIP"
             is_fibo = abs(curr['Low'] - sig['Fib_618']) / sig['Fib_618'] < 0.006
             
-            # Ranking (0-100)
             score = 25 if is_fibo else 10
             score += 40 if curr['Vol_Ratio'] > 1.8 else 10
             score += 35 if mood == "🟢 BULLISH" else 15
@@ -83,7 +108,7 @@ def get_signal(symbol, memory, mood):
                      f"Stock: **{symbol.replace('.NS','')}**\n"
                      f"Rank: {rank} ({score}/100)\n"
                      f"Context: {'📐 Fibonacci' if is_fibo else '🧱 Support'}\n"
-                     f"OI Status: {'🔥 INSTITUTIONAL SURGE' if curr['Vol_Ratio'] > 1.8 else '⚪ Normal'}\n"
+                     f"Vol Status: {'🔥 INSTITUTIONAL SURGE' if curr['Vol_Ratio'] > 1.8 else '⚪ Normal'}\n"
                      f"---------------------------\n"
                      f"🟢 **ENTRY:** {curr['Close']:.2f} {m_arrow}\n"
                      f"🔴 **SL:** {sig['Low']:.2f}\n"
@@ -99,7 +124,15 @@ def get_signal(symbol, memory, mood):
 if __name__ == "__main__":
     mood = get_market_mood()
     if os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, 'r') as f: mem = json.load(f)
+        try:
+            with open(MEMORY_FILE, 'r') as f: mem = json.load(f)
+        except: mem = {}
     else: mem = {}
-    for s in [s for s in SYMBOLS if s != "^NSEI"]: mem = get_signal(s, mem, mood)
-    with open(MEMORY_FILE, 'w') as f: json.dump(mem, f, indent=4)
+    
+    # Exclude indices from signal scanning
+    scan_list = [s for s in SYMBOLS if not s.startswith("^")]
+    for s in scan_list:
+        mem = get_signal(s, mem, mood)
+        
+    with open(MEMORY_FILE, 'w') as f:
+        json.dump(mem, f, indent=4)
