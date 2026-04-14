@@ -8,7 +8,7 @@ import csv
 import logging
 from datetime import datetime
 
-# --- 1. SILENCE THE NOISE ---
+# --- Silence Noise ---
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
 # --- CONFIGURATION ---
@@ -16,16 +16,13 @@ TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_status.json"
 POSITIONS_FILE = "active_positions.json"
-ML_LOG = "ml_training_data.csv"
 TRADE_LOG = "weekly_trade_summary.csv"
 
-# --- UPDATED APRIL 2026 F&O UNIVERSE ---
-# Removed merged tickers (IDFC, L&TFH), fixed formatting for United Spirits and others.
+# --- FULL APRIL 2026 F&O UNIVERSE ---
 SYMBOLS = [
-    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", 
-    "LTF.NS", "UNITDSPR.NS", "IDFCFIRSTB.NS", "LTIM.NS", # Corrected tickers
-    "ADANIPOWER.NS", "COCHINSHIP.NS", "FORCEMOT.NS", "GODFRYPHLP.NS", 
-    "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", "VMM.NS", "SWIGGY.NS",
+    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "ADANIPOWER.NS", "COCHINSHIP.NS", 
+    "FORCEMOT.NS", "GODFRYPHLP.NS", "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", 
+    "VMM.NS", "SWIGGY.NS", "LTF.NS", "UNITDSPR.NS", "IDFCFIRSTB.NS", "LTIM.NS",
     "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", 
     "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", 
     "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", 
@@ -59,7 +56,6 @@ SYMBOLS = [
     "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
-# --- UTILITIES ---
 def load_json(filename):
     if os.path.exists(filename):
         with open(filename, 'r') as f:
@@ -76,18 +72,13 @@ def send_telegram(msg):
     try: requests.get(url, timeout=10)
     except: pass
 
-# --- FAIL-SAFE DATA FETCHING ---
 def safe_fetch(symbol, period="10d", interval="15m"):
     try:
         df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False)
-        if df is None or df.empty or len(df) < 5:
-            return None
-        # Handle Multi-Index columns from yfinance
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+        if df is None or df.empty or len(df) < 5: return None
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         return df
-    except:
-        return None
+    except: return None
 
 def get_woodie_pivots(symbol):
     df_d = safe_fetch(symbol, period="2d", interval="1d")
@@ -95,7 +86,7 @@ def get_woodie_pivots(symbol):
         prev = df_d.iloc[-2]
         h, l, c = prev['High'], prev['Low'], prev['Close']
         pp = (h + l + 2 * c) / 4
-        return {"R1": (2 * pp) - l, "S1": (2 * pp) - h}
+        return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
     return None
 
 def is_pa(candle):
@@ -104,95 +95,72 @@ def is_pa(candle):
     us = candle['High'] - candle[['Open', 'Close']].max()
     return (ls > b * 1.3), (us > b * 1.3)
 
-# --- POSITION MANAGER ---
 def manage_positions(positions):
     updated = positions.copy()
     for symbol, trade in positions.items():
         df = safe_fetch(symbol, period="2d", interval="15m")
         if df is None: continue
-        
         df['EMA9'] = df['Close'].ewm(span=9).mean()
         curr = df.iloc[-1]
-        
         exit_sig = (trade['Side'] == "🟢 BUY" and curr['Close'] < curr['EMA9']) or \
                    (trade['Side'] == "🔴 SELL" and curr['Close'] > curr['EMA9'])
-        
         if exit_sig:
             pts = round(curr['Close'] - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr['Close'], 2)
             pct = round((pts / trade['Entry']) * 100, 2)
-            emoji = "💰" if pts > 0 else "🛑"
-            
-            msg = (f"{emoji} **TREND ENDED: {symbol.replace('.NS','')}**\n"
-                   f"Side: {trade['Side']}\n"
-                   f"Entry: {trade['Entry']:.2f} | Exit: {curr['Close']:.2f}\n"
-                   f"**Captured: {pts} pts ({pct}%)**")
+            msg = f"🏁 **EXIT: {symbol.replace('.NS','')}**\nEntry: {trade['Entry']} | Exit: {curr['Close']:.2f}\n**Pts: {pts} ({pct}%)**"
             send_telegram(msg)
-            
             with open(TRADE_LOG, 'a', newline='') as f:
                 csv.writer(f).writerow([datetime.now(), symbol, trade['Side'], trade['Entry'], curr['Close'], pts, pct])
             del updated[symbol]
     return updated
 
-# --- SIGNAL ENGINE ---
 def get_signal(symbol, memory, positions):
-    df = safe_fetch(symbol, period="10d", interval="15m")
+    df_1h = safe_fetch(symbol, period="10d", interval="1h")
+    df_15m = safe_fetch(symbol, period="5d", interval="15m")
     pivots = get_woodie_pivots(symbol)
-    if df is None or pivots is None: return memory, positions
+    if df_1h is None or df_15m is None or pivots is None: return memory, positions
 
-    df['EMA9'] = df['Close'].ewm(span=9).mean()
-    lookback = df.iloc[-5:-1] 
-    curr = df.iloc[-1]
-    ts = str(df.index[-2])
+    h_curr = df_1h.iloc[-1]
+    is_h_ham, is_h_star = is_pa(h_curr)
+    
+    df_15m['EMA9'] = df_15m['Close'].ewm(span=9).mean()
+    m15_look = df_15m.iloc[-5:-1]
+    m15_curr = df_15m.iloc[-1]
+    ts = str(df_15m.index[-1])
 
-    has_ham = any([is_pa(lookback.iloc[i])[0] for i in range(len(lookback))])
-    has_star = any([is_pa(lookback.iloc[i])[1] for i in range(len(lookback))])
-
-    swing_h, swing_l = lookback['High'].max(), lookback['Low'].min()
-    is_long = (lookback['Low'].iloc[-1] < lookback['Low'].iloc[0]) and (curr['Close'] > swing_h) and has_ham
-    is_short = (lookback['High'].iloc[-1] > lookback['High'].iloc[0]) and (curr['Close'] < swing_l) and has_star
+    m15_sw_h, m15_sw_l = m15_look['High'].max(), m15_look['Low'].min()
+    is_long = (m15_curr['Close'] > m15_sw_h) and (is_h_ham or any([is_pa(m15_look.iloc[i])[0] for i in range(len(m15_look))]))
+    is_short = (m15_curr['Close'] < m15_sw_l) and (is_h_star or any([is_pa(m15_look.iloc[i])[1] for i in range(len(m15_look))]))
 
     if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
-        vol_delta = curr['Volume'] / (lookback['Volume'].mean() + 1e-9)
-        
+        vol_delta = m15_curr['Volume'] / (m15_look['Volume'].mean() + 1e-9)
         if vol_delta > 1.1:
-            near_s1 = abs(swing_l - pivots['S1']) / pivots['S1'] < 0.0015
-            near_r1 = abs(swing_h - pivots['R1']) / pivots['R1'] < 0.0015
-            
-            quality = "💎 ELITE (Level Rev)" if (near_s1 if is_long else near_r1) else "🚀 HIGH"
-            side = "🟢 BUY" if is_long else "🔴 SELL"
-            zone = "S1 Support" if near_s1 else "R1 Resistance" if near_r1 else "Price Action"
+            near_s1 = abs(m15_sw_l - pivots['S1']) / pivots['S1'] < 0.0015
+            near_r1 = abs(m15_sw_h - pivots['R1']) / pivots['R1'] < 0.0015
+            near_pp = abs((m15_sw_l if is_long else m15_sw_h) - pivots['PP']) / pivots['PP'] < 0.0015
 
-            # ML Logging
-            with open(ML_LOG, 'a', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=["Date", "Symbol", "Side", "VolDelta", "Zone", "Result"])
-                if not os.path.isfile(ML_LOG) or os.path.getsize(ML_LOG) == 0: writer.writeheader()
-                writer.writerow({"Date": ts, "Symbol": symbol, "Side": side, "VolDelta": round(vol_delta, 2), "Zone": zone, "Result": "PENDING"})
+            if is_long:
+                side, sl = "🟢 BUY", m15_sw_l
+                t1, t2 = (pivots['PP'], pivots['R1']) if near_s1 else (pivots['R1'], pivots['R2'])
+                qual = "💎 ELITE" if near_s1 else ("🥇 PRIME" if near_pp else "🚀 HIGH")
+            else:
+                side, sl = "🔴 SELL", m15_sw_h
+                t1, t2 = (pivots['PP'], pivots['S1']) if near_r1 else (pivots['S1'], pivots['S2'])
+                qual = "💎 ELITE" if near_r1 else ("🥇 PRIME" if near_pp else "🚀 HIGH")
 
-            msg = (f"🎯 **{side}: {symbol.replace('.NS', '')}**\n"
+            msg = (f"🎯 **{side}: {symbol.replace('.NS','')}**\n"
                    f"---------------------------\n"
-                   f"📊 **Quality:** {quality}\n"
-                   f"📍 **Zone:** {zone}\n"
-                   f"🔥 **Vol Δ:** {vol_delta:.2f}x\n"
-                   f"💰 **Entry:** {curr['Close']:.2f}\n"
-                   f"🛡️ **SL:** {swing_l if is_long else swing_h:.2f}\n"
-                   f"📈 **Ride (9 EMA):** {curr['EMA9']:.2f}\n"
-                   f"🚀 *Strategy: Ignore PP. Ride the trend!*")
-            
+                   f"📊 **Qual:** {qual} | **Anchor:** 1-Hour Reversal\n"
+                   f"💰 **Entry:** {m15_curr['Close']:.2f} | **SL:** {sl:.2f}\n"
+                   f"🎯 **T1:** {t1:.2f} | **T2:** {t2:.2f}\n"
+                   f"📈 **Trail:** 9 EMA ({m15_curr['EMA9']:.2f})")
             send_telegram(msg)
             memory[f"{symbol}_{ts}"] = True
-            positions[symbol] = {"Entry": round(curr['Close'], 2), "Side": side, "Time": ts}
-
+            positions[symbol] = {"Entry": round(m15_curr['Close'], 2), "Side": side, "Time": ts}
     return memory, positions
 
-# --- MAIN EXECUTION ---
 if __name__ == "__main__":
-    mem = load_json(MEMORY_FILE)
-    pos = load_json(POSITIONS_FILE)
-    
+    mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
     pos = manage_positions(pos)
-    
-    for s in SYMBOLS:
-        mem, pos = get_signal(s, mem, pos)
-        
-    save_json(mem, MEMORY_FILE)
-    save_json(pos, POSITIONS_FILE)
+    for s in SYMBOLS: mem, pos = get_signal(s, mem, pos)
+    save_json(mem, MEMORY_FILE); save_json(pos, POSITIONS_FILE)
