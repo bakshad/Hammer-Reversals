@@ -10,7 +10,6 @@ from datetime import datetime
 
 # --- 1. SILENCE THE NOISE ---
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
-yf.set_tz_cache(False)
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
