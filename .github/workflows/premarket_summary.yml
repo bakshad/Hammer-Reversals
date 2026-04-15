@@ -9,11 +9,13 @@ jobs:
   premarket-report:
     runs-on: ubuntu-latest
     steps:
-      - name: Run Premarket Analysis
+               - name: Run Premarket Engine
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # This ensures the bot finds the file regardless of the folder nesting
         run: |
-          # This triggers your pre-market logic to scan GIFT Nifty 
-          # and top F&O OI gainers from the previous day.
-          python premarket_engine.py 
+          cd $GITHUB_WORKSPACE
+          python premarket_engine.py
+
+ 
