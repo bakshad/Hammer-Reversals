@@ -1,38 +1,55 @@
-name: 5m F&O Scalper Engine
+name: 5m F&O Sniper Scalper Engine
 
 on:
   schedule:
-    # Runs every 5 minutes during NSE market hours (IST 9:15 - 15:30)
-    # UTC: 3:45 to 10:00
+    # Runs every 5 mins during NSE market hours (IST 9:15 - 15:30)
+    # 03:45 UTC to 10:00 UTC covers the full Indian session
     - cron: '*/5 3-10 * * 1-5'
-  workflow_dispatch:
+  workflow_dispatch: # Allows you to trigger it manually for testing
 
 jobs:
-  scalp:
+  sniper_scalp:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    # Prevents multiple runs from overlapping if one run takes > 5 mins
+    concurrency:
+      group: sniper-scalp-group
+      cancel-in-progress: false
 
-      - name: Setup Python
+    steps:
+      - name: 📂 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # Fetches full history so git push works reliably
+          fetch-depth: 0
+
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip' # Speeds up subsequent runs
 
-      - name: Install Dependencies
-        run: pip install yfinance pandas requests numpy
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas requests numpy
 
-      - name: 🚀 Run Scalper
+      - name: 🚀 Run Sniper Engine
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scalper_bot_fno.py
 
-      - name: 📂 Sync Scalp Data
-        if: always()
+      - name: 📂 Sync Trade Data
+        if: always() # Ensures data is saved even if the script hits an error
         run: |
-          git config --global user.name "ScalpBot"
-          git config --global user.email "scalp@trading.com"
+          git config --global user.name "SniperBot"
+          git config --global user.email "sniper@trading.com"
+          # Only add files related to the scalper
           git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
-          git commit -m "Sync Scalp Positions [skip ci]" || echo "No changes"
-          git push || echo "Sync failed"
+          # Only commit if there are actually changes to the data
+          if git diff --staged --quiet; then
+            echo "No changes in trade data."
+          else
+            git commit -m "Sync Sniper Positions & Logs [skip ci]"
+            git push origin main
+          fi
