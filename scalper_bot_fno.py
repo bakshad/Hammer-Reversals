@@ -11,7 +11,7 @@ from datetime import datetime
 # --- Silence Noise ---
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
-# --- CONFIGURATION (Synced with main_scalper.yml) ---
+# --- CONFIGURATION ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_status_scalp.json"
@@ -56,7 +56,6 @@ SYMBOLS = [
     "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
-# --- UTILITIES ---
 def load_json(filename):
     if os.path.exists(filename):
         with open(filename, 'r') as f:
@@ -75,7 +74,6 @@ def send_telegram(msg):
 
 def safe_fetch(symbol, period="5d", interval="5m"):
     try:
-        # Added multi_level_index=False to prevent ValueError
         df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False, multi_level_index=False)
         if df is None or df.empty: return None
         return df
@@ -83,13 +81,12 @@ def safe_fetch(symbol, period="5d", interval="5m"):
 
 def get_woodie_pivots(symbol):
     try:
-        df_d = yf.download(symbol, period="2d", interval="1d", progress=False, multi_level_index=False)
+        # Fetch 5 days to ensure we bypass holidays/weekends
+        df_d = yf.download(symbol, period="5d", interval="1d", progress=False, multi_level_index=False)
         if df_d is not None and len(df_d) >= 2:
+            # iloc[-2] is the last completed daily candle
             prev = df_d.iloc[-2]
-            # Force conversion to float to prevent Series ambiguity
-            h = float(prev['High'])
-            l = float(prev['Low'])
-            c = float(prev['Close'])
+            h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
             pp = (h + l + 2 * c) / 4
             return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
     except: pass
@@ -107,17 +104,18 @@ def manage_positions(positions):
         df = safe_fetch(symbol, period="1d", interval="5m")
         if df is None: continue
         df['EMA9'] = df['Close'].ewm(span=9).mean()
-        curr = df.iloc[-1]
+        curr_price = float(df['Close'].iloc[-1])
+        ema_val = float(df['EMA9'].iloc[-1])
         
-        exit_sig = (trade['Side'] == "🟢 BUY" and curr['Close'] < df['EMA9'].iloc[-1]) or \
-                   (trade['Side'] == "🔴 SELL" and curr['Close'] > df['EMA9'].iloc[-1])
+        exit_sig = (trade['Side'] == "🟢 BUY" and curr_price < ema_val) or \
+                   (trade['Side'] == "🔴 SELL" and curr_price > ema_val)
         
         if exit_sig:
-            pts = round(curr['Close'] - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr['Close'], 2)
+            pts = round(curr_price - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_price, 2)
             pct = round((pts / trade['Entry']) * 100, 2)
             send_telegram(f"🏁 **SCALP EXIT: {symbol.replace('.NS','')}**\nPts: {pts} ({pct}%)")
             with open(TRADE_LOG, 'a', newline='') as f:
-                csv.writer(f).writerow([datetime.now(), symbol, trade['Side'], trade['Entry'], curr['Close'], pts, pct])
+                csv.writer(f).writerow([datetime.now(), symbol, trade['Side'], trade['Entry'], curr_price, pts, pct])
             del updated[symbol]
     return updated
 
@@ -134,14 +132,13 @@ def get_signal(symbol, memory, positions):
     df_trigger['EMA9'] = df_trigger['Close'].ewm(span=9).mean()
     t_look = df_trigger.iloc[-5:-1]
     t_curr = df_trigger.iloc[-1]
+    curr_close = float(t_curr['Close'])
     ts = str(df_trigger.index[-1])
 
-    # Convert swing levels to floats immediately
-    t_sw_h = float(t_look['High'].max())
-    t_sw_l = float(t_look['Low'].min())
+    t_sw_h, t_sw_l = float(t_look['High'].max()), float(t_look['Low'].min())
     
-    is_long = (float(t_curr['Close']) > t_sw_h) and (is_a_ham or any([is_pa(t_look.iloc[i])[0] for i in range(len(t_look))]))
-    is_short = (float(t_curr['Close']) < t_sw_l) and (is_a_star or any([is_pa(t_look.iloc[i])[1] for i in range(len(t_look))]))
+    is_long = (curr_close > t_sw_h) and (is_a_ham or any([is_pa(t_look.iloc[i])[0] for i in range(len(t_look))]))
+    is_short = (curr_close < t_sw_l) and (is_a_star or any([is_pa(t_look.iloc[i])[1] for i in range(len(t_look))]))
 
     if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
         vol_delta = float(t_curr['Volume']) / (float(t_look['Volume'].mean()) + 1e-9)
@@ -153,22 +150,28 @@ def get_signal(symbol, memory, positions):
 
             if is_long:
                 side, sl = "🟢 BUY", t_sw_l
-                t1, t2 = (pivots['PP'], pivots['R1']) if near_s1 else (pivots['R1'], pivots['R2'])
+                # Dynamic Targets: Pick levels ABOVE Entry
+                valid_lvls = sorted([p for p in pivots.values() if p > curr_close])
+                t1 = valid_lvls[0] if len(valid_lvls) > 0 else curr_close * 1.01
+                t2 = valid_lvls[1] if len(valid_lvls) > 1 else t1 * 1.005
                 qual = "💎 ELITE" if near_s1 else ("🥇 PRIME" if near_pp else "🚀 HIGH")
             else:
                 side, sl = "🔴 SELL", t_sw_h
-                t1, t2 = (pivots['PP'], pivots['S1']) if near_r1 else (pivots['S1'], pivots['S2'])
+                # Dynamic Targets: Pick levels BELOW Entry
+                valid_lvls = sorted([p for p in pivots.values() if p < curr_close], reverse=True)
+                t1 = valid_lvls[0] if len(valid_lvls) > 0 else curr_close * 0.99
+                t2 = valid_lvls[1] if len(valid_lvls) > 1 else t1 * 0.995
                 qual = "💎 ELITE" if near_r1 else ("🥇 PRIME" if near_pp else "🚀 HIGH")
 
             msg = (f"⚡ **SCALP: {side} {symbol.replace('.NS','')}**\n"
                    f"---------------------------\n"
                    f"📊 **Qual:** {qual} | **Anchor:** 15m Reversal\n"
-                   f"💰 **Entry:** {t_curr['Close']:.2f} | **SL:** {sl:.2f}\n"
+                   f"💰 **Entry:** {curr_close:.2f} | **SL:** {sl:.2f}\n"
                    f"🎯 **T1:** {t1:.2f} | **T2:** {t2:.2f}\n"
                    f"📈 **Trail:** 9 EMA ({df_trigger['EMA9'].iloc[-1]:.2f})")
             send_telegram(msg)
             memory[f"{symbol}_{ts}"] = True
-            positions[symbol] = {"Entry": round(float(t_curr['Close']), 2), "Side": side, "Time": ts}
+            positions[symbol] = {"Entry": round(curr_close, 2), "Side": side, "Time": ts}
     return memory, positions
 
 if __name__ == "__main__":
