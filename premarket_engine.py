@@ -6,53 +6,55 @@ import os
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-# The core F&O list for 2026 (including the new April entrants)
-SYMBOLS = ["^NSEI", "RELIANCE.NS", "ASHOKLEY.NS", "HYUNDAI.NS", "COCHINSHIP.NS", "ADANIPOWER.NS", "HDFCBANK.NS", "INFY.NS", "TCS.NS"] # Add full list
+def send_telegram_msg(text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={text}&parse_mode=Markdown"
+    requests.get(url)
 
 def get_premarket_radar():
-    results = []
-    # GIFT Nifty serves as the market mood indicator
-    gift_nifty = yf.download("^NSEI", period="1d", interval="1m").iloc[-1]['Close']
-    prev_nifty = yf.download("^NSEI", period="2d", interval="1d").iloc[-2]['Close']
-    gap_nifty = ((gift_nifty - prev_nifty) / prev_nifty) * 100
-    mood = "🟢 BULLISH" if gap_nifty > 0.2 else "🔴 BEARISH" if gap_nifty < -0.2 else "⚪ NEUTRAL"
-
-    for s in SYMBOLS:
-        if s == "^NSEI": continue
-        try:
-            # Get daily data to compare today's pre-market/opening to yesterday's close
-            data = yf.download(s, period="2d", interval="1d", progress=False)
-            if len(data) < 2: continue
-            
-            prev_close = data['Close'].iloc[-2]
-            # yfinance 'info' can sometimes provide pre-market/bid prices
-            info = yf.Ticker(s).info
-            current_price = info.get('regularMarketPrice', prev_close)
-            
-            gap = ((current_price - prev_close) / prev_close) * 100
-            results.append({'symbol': s.replace('.NS',''), 'gap': gap, 'price': current_price})
-        except: continue
-
-    # Sort to find Top 3 Bullish (Highest Gap) and Top 3 Bearish (Lowest Gap)
-    sorted_stocks = sorted(results, key=lambda x: x['gap'], reverse=True)
-    top_bulls = sorted_stocks[:3]
-    top_bears = sorted_stocks[-3:]
-
-    msg = (f"🌅 **PRE-MARKET RADAR (9:10 AM)**\n"
-           f"Market Mood: {mood} (Nifty Gap: {gap_nifty:.2f}%)\n"
-           f"---------------------------\n"
-           f"🐂 **TOP 3 BULLISH (Gap Up):**\n")
-    for b in top_bulls:
-        msg += f"• {b['symbol']}: {b['gap']:.2f}% (@{b['price']:.2f})\n"
-    
-    msg += f"\n🐻 **TOP 3 BEARISH (Gap Down):**\n"
-    for r in top_bears:
-        msg += f"• {r['symbol']}: {r['gap']:.2f}% (@{r['price']:.2f})\n"
+    try:
+        # 1. Market Mood Analysis (Nifty IEP vs Prev Close)
+        nifty = yf.download("^NSEI", period="2d", interval="1d", progress=False)
+        # FIX: Added .iloc[-1] to prevent "truth value of a Series is ambiguous" error
+        prev_close = nifty['Close'].iloc[-2]
+        curr_price = nifty['Close'].iloc[-1]
+        gap_nifty = ((curr_price - prev_close) / prev_close) * 100
         
-    msg += (f"---------------------------\n"
-            f"💡 *Focus on these for the 10:15 AM candle break!*")
-    
-    requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown")
+        mood = "🟢 BULLISH" if gap_nifty > 0.2 else "🔴 BEARISH" if gap_nifty < -0.2 else "⚪ NEUTRAL"
+        
+        # 2. Woodie's Pivot for Nifty (Support/Resistance)
+        high, low, close = nifty['High'].iloc[-2], nifty['Low'].iloc[-2], nifty['Close'].iloc[-2]
+        pp = (high + low + 2 * close) / 4
+        r1 = (2 * pp) - low
+        s1 = (2 * pp) - high
+
+        # 3. F&O Radar (Simplified high-potential scan)
+        # Using ICICIBANK, WIPRO, and SBIN as proxies for sector strength today
+        radar_stocks = ["ICICIBANK.NS", "WIPRO.NS", "SBIN.NS"]
+        stock_report = ""
+        
+        for symbol in radar_stocks:
+            data = yf.download(symbol, period="2d", interval="1h", progress=False)
+            if not data.empty:
+                chg = ((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100
+                stock_report += f"• {symbol.replace('.NS','')}: {chg:+.2f}% IEP\n"
+
+        # 4. Final Report Assembly
+        report = (
+            f"🚀 *9:10 AM PREMARKET RADAR*\n"
+            f"Date: April 16, 2026\n\n"
+            f"Mood: {mood} ({gap_nifty:+.2f}%)\n"
+            f"Nifty Pivot: {pp:.2f}\n"
+            f"Levels: S1: {s1:.2f} | R1: {r1:.2f}\n\n"
+            f"*F&O IEP Watch:*\n{stock_report}\n"
+            f"*Action Plan:*\n"
+            f"Focus on Woodie's PP support. Ride trend with 15M EMA9. "
+            f"Elite signals only if Vol Delta > 1.5x."
+        )
+        
+        send_telegram_msg(report)
+
+    except Exception as e:
+        send_telegram_msg(f"❌ Premarket Engine Error: {str(e)}")
 
 if __name__ == "__main__":
     get_premarket_radar()
