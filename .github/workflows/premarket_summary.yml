@@ -2,7 +2,7 @@ name: 9:10 AM Premarket Radar
 
 on:
   schedule:
-    # Line 9 starts below: Ensure there is exactly 1 space after the dash and quotes around the cron
+    # Runs at 3:40 AM UTC which is 9:10 AM IST
     - cron: '40 3 * * 1-5'
   workflow_dispatch:
 
