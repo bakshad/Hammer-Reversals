@@ -14,9 +14,9 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 # --- CONFIGURATION (Synced with main_scalper.yml) ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_status_scalp.json"         # Unique for scalper
-POSITIONS_FILE = "active_positions_scalp.json"  # Unique for scalper
-TRADE_LOG = "scalp_trade_summary.csv"           # Unique for scalper
+MEMORY_FILE = "alert_status_scalp.json"
+POSITIONS_FILE = "active_positions_scalp.json"
+TRADE_LOG = "scalp_trade_summary.csv"
 
 # --- FULL APRIL 2026 F&O UNIVERSE ---
 SYMBOLS = [
@@ -75,19 +75,24 @@ def send_telegram(msg):
 
 def safe_fetch(symbol, period="5d", interval="5m"):
     try:
-        df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False)
+        # Added multi_level_index=False to prevent ValueError
+        df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False, multi_level_index=False)
         if df is None or df.empty: return None
-        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         return df
     except: return None
 
 def get_woodie_pivots(symbol):
-    df_d = yf.download(symbol, period="2d", interval="1d", progress=False)
-    if df_d is not None and len(df_d) >= 2:
-        prev = df_d.iloc[-2]
-        h, l, c = prev['High'], prev['Low'], prev['Close']
-        pp = (h + l + 2 * c) / 4
-        return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
+    try:
+        df_d = yf.download(symbol, period="2d", interval="1d", progress=False, multi_level_index=False)
+        if df_d is not None and len(df_d) >= 2:
+            prev = df_d.iloc[-2]
+            # Force conversion to float to prevent Series ambiguity
+            h = float(prev['High'])
+            l = float(prev['Low'])
+            c = float(prev['Close'])
+            pp = (h + l + 2 * c) / 4
+            return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
+    except: pass
     return None
 
 def is_pa(candle):
@@ -96,7 +101,6 @@ def is_pa(candle):
     us = candle['High'] - candle[['Open', 'Close']].max()
     return (ls > b * 1.3), (us > b * 1.3)
 
-# --- POSITION MANAGER (5m Trail) ---
 def manage_positions(positions):
     updated = positions.copy()
     for symbol, trade in positions.items():
@@ -104,8 +108,10 @@ def manage_positions(positions):
         if df is None: continue
         df['EMA9'] = df['Close'].ewm(span=9).mean()
         curr = df.iloc[-1]
+        
         exit_sig = (trade['Side'] == "🟢 BUY" and curr['Close'] < df['EMA9'].iloc[-1]) or \
                    (trade['Side'] == "🔴 SELL" and curr['Close'] > df['EMA9'].iloc[-1])
+        
         if exit_sig:
             pts = round(curr['Close'] - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr['Close'], 2)
             pct = round((pts / trade['Entry']) * 100, 2)
@@ -115,11 +121,11 @@ def manage_positions(positions):
             del updated[symbol]
     return updated
 
-# --- SIGNAL ENGINE ---
 def get_signal(symbol, memory, positions):
     df_anchor = safe_fetch(symbol, period="5d", interval="15m")
     df_trigger = safe_fetch(symbol, period="2d", interval="5m")
     pivots = get_woodie_pivots(symbol)
+    
     if df_anchor is None or df_trigger is None or pivots is None: return memory, positions
 
     a_curr = df_anchor.iloc[-1]
@@ -130,17 +136,20 @@ def get_signal(symbol, memory, positions):
     t_curr = df_trigger.iloc[-1]
     ts = str(df_trigger.index[-1])
 
-    t_sw_h, t_sw_l = t_look['High'].max(), t_look['Low'].min()
+    # Convert swing levels to floats immediately
+    t_sw_h = float(t_look['High'].max())
+    t_sw_l = float(t_look['Low'].min())
     
-    is_long = (t_curr['Close'] > t_sw_h) and (is_a_ham or any([is_pa(t_look.iloc[i])[0] for i in range(len(t_look))]))
-    is_short = (t_curr['Close'] < t_sw_l) and (is_a_star or any([is_pa(t_look.iloc[i])[1] for i in range(len(t_look))]))
+    is_long = (float(t_curr['Close']) > t_sw_h) and (is_a_ham or any([is_pa(t_look.iloc[i])[0] for i in range(len(t_look))]))
+    is_short = (float(t_curr['Close']) < t_sw_l) and (is_a_star or any([is_pa(t_look.iloc[i])[1] for i in range(len(t_look))]))
 
     if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
-        vol_delta = t_curr['Volume'] / (t_look['Volume'].mean() + 1e-9)
+        vol_delta = float(t_curr['Volume']) / (float(t_look['Volume'].mean()) + 1e-9)
         if vol_delta > 1.1:
             near_s1 = abs(t_sw_l - pivots['S1']) / pivots['S1'] < 0.0015
             near_r1 = abs(t_sw_h - pivots['R1']) / pivots['R1'] < 0.0015
-            near_pp = abs((t_sw_l if is_long else t_sw_h) - pivots['PP']) / pivots['PP'] < 0.0015
+            check_val = t_sw_l if is_long else t_sw_h
+            near_pp = abs(check_val - pivots['PP']) / pivots['PP'] < 0.0015
 
             if is_long:
                 side, sl = "🟢 BUY", t_sw_l
@@ -159,7 +168,7 @@ def get_signal(symbol, memory, positions):
                    f"📈 **Trail:** 9 EMA ({df_trigger['EMA9'].iloc[-1]:.2f})")
             send_telegram(msg)
             memory[f"{symbol}_{ts}"] = True
-            positions[symbol] = {"Entry": round(t_curr['Close'], 2), "Side": side, "Time": ts}
+            positions[symbol] = {"Entry": round(float(t_curr['Close']), 2), "Side": side, "Time": ts}
     return memory, positions
 
 if __name__ == "__main__":
