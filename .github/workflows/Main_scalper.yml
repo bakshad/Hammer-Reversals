@@ -1,0 +1,38 @@
+name: 5m F&O Scalper Engine
+
+on:
+  schedule:
+    # Runs every 5 minutes during NSE market hours (IST 9:15 - 15:30)
+    # UTC: 3:45 to 10:00
+    - cron: '*/5 3-10 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  scalp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install yfinance pandas requests numpy
+
+      - name: 🚀 Run Scalper
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scalper_bot_fno.py
+
+      - name: 📂 Sync Scalp Data
+        if: always()
+        run: |
+          git config --global user.name "ScalpBot"
+          git config --global user.email "scalp@trading.com"
+          git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
+          git commit -m "Sync Scalp Positions [skip ci]" || echo "No changes"
+          git push || echo "Sync failed"
