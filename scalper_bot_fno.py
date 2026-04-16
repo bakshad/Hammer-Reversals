@@ -11,12 +11,12 @@ from datetime import datetime
 # --- Silence Noise ---
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (Synced with main_scalper.yml) ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_status_scalp.json"
-POSITIONS_FILE = "active_positions_scalp.json"
-TRADE_LOG = "scalp_trade_summary.csv"
+MEMORY_FILE = "alert_status_scalp.json"         # Unique for scalper
+POSITIONS_FILE = "active_positions_scalp.json"  # Unique for scalper
+TRADE_LOG = "scalp_trade_summary.csv"           # Unique for scalper
 
 # --- FULL APRIL 2026 F&O UNIVERSE ---
 SYMBOLS = [
@@ -56,6 +56,7 @@ SYMBOLS = [
     "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
+# --- UTILITIES ---
 def load_json(filename):
     if os.path.exists(filename):
         with open(filename, 'r') as f:
@@ -75,13 +76,12 @@ def send_telegram(msg):
 def safe_fetch(symbol, period="5d", interval="5m"):
     try:
         df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False)
-        if df is None or df.empty or len(df) < 5: return None
+        if df is None or df.empty: return None
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         return df
     except: return None
 
 def get_woodie_pivots(symbol):
-    # Daily levels remain the same for Woodies
     df_d = yf.download(symbol, period="2d", interval="1d", progress=False)
     if df_d is not None and len(df_d) >= 2:
         prev = df_d.iloc[-2]
@@ -96,34 +96,32 @@ def is_pa(candle):
     us = candle['High'] - candle[['Open', 'Close']].max()
     return (ls > b * 1.3), (us > b * 1.3)
 
+# --- POSITION MANAGER (5m Trail) ---
 def manage_positions(positions):
     updated = positions.copy()
     for symbol, trade in positions.items():
-        # Using 5m for exit trailing
         df = safe_fetch(symbol, period="1d", interval="5m")
         if df is None: continue
         df['EMA9'] = df['Close'].ewm(span=9).mean()
         curr = df.iloc[-1]
-        exit_sig = (trade['Side'] == "🟢 BUY" and curr['Close'] < curr['EMA9']) or \
-                   (trade['Side'] == "🔴 SELL" and curr['Close'] > curr['EMA9'])
+        exit_sig = (trade['Side'] == "🟢 BUY" and curr['Close'] < df['EMA9'].iloc[-1]) or \
+                   (trade['Side'] == "🔴 SELL" and curr['Close'] > df['EMA9'].iloc[-1])
         if exit_sig:
             pts = round(curr['Close'] - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr['Close'], 2)
             pct = round((pts / trade['Entry']) * 100, 2)
-            msg = f"🏁 **SCALP EXIT: {symbol.replace('.NS','')}**\nPts: {pts} ({pct}%)"
-            send_telegram(msg)
+            send_telegram(f"🏁 **SCALP EXIT: {symbol.replace('.NS','')}**\nPts: {pts} ({pct}%)")
             with open(TRADE_LOG, 'a', newline='') as f:
                 csv.writer(f).writerow([datetime.now(), symbol, trade['Side'], trade['Entry'], curr['Close'], pts, pct])
             del updated[symbol]
     return updated
 
+# --- SIGNAL ENGINE ---
 def get_signal(symbol, memory, positions):
-    # Anchor: 15m | Trigger: 5m
     df_anchor = safe_fetch(symbol, period="5d", interval="15m")
     df_trigger = safe_fetch(symbol, period="2d", interval="5m")
     pivots = get_woodie_pivots(symbol)
     if df_anchor is None or df_trigger is None or pivots is None: return memory, positions
 
-    # Anchor Condition
     a_curr = df_anchor.iloc[-1]
     is_a_ham, is_a_star = is_pa(a_curr)
     
@@ -134,7 +132,6 @@ def get_signal(symbol, memory, positions):
 
     t_sw_h, t_sw_l = t_look['High'].max(), t_look['Low'].min()
     
-    # Logic: 5m Flip + (15m Candle Reversal OR 5m candle Hammer/Star)
     is_long = (t_curr['Close'] > t_sw_h) and (is_a_ham or any([is_pa(t_look.iloc[i])[0] for i in range(len(t_look))]))
     is_short = (t_curr['Close'] < t_sw_l) and (is_a_star or any([is_pa(t_look.iloc[i])[1] for i in range(len(t_look))]))
 
@@ -159,7 +156,7 @@ def get_signal(symbol, memory, positions):
                    f"📊 **Qual:** {qual} | **Anchor:** 15m Reversal\n"
                    f"💰 **Entry:** {t_curr['Close']:.2f} | **SL:** {sl:.2f}\n"
                    f"🎯 **T1:** {t1:.2f} | **T2:** {t2:.2f}\n"
-                   f"📈 **Trail:** 9 EMA ({t_curr['EMA9']:.2f})")
+                   f"📈 **Trail:** 9 EMA ({df_trigger['EMA9'].iloc[-1]:.2f})")
             send_telegram(msg)
             memory[f"{symbol}_{ts}"] = True
             positions[symbol] = {"Entry": round(t_curr['Close'], 2), "Side": side, "Time": ts}
