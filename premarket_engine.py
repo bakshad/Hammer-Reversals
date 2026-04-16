@@ -12,33 +12,45 @@ def send_telegram_msg(text):
 
 def get_premarket_radar():
     try:
-        # 1. Market Mood Analysis (Nifty IEP vs Prev Close)
-        nifty = yf.download("^NSEI", period="2d", interval="1d", progress=False)
-        # FIX: Added .iloc[-1] to prevent "truth value of a Series is ambiguous" error
-        prev_close = nifty['Close'].iloc[-2]
-        curr_price = nifty['Close'].iloc[-1]
-        gap_nifty = ((curr_price - prev_close) / prev_close) * 100
+        # 1. Market Mood Analysis
+        # Note: We download 3 days to ensure we have at least 2 full sessions
+        nifty_data = yf.download("^NSEI", period="3d", interval="1d", progress=False)
         
+        # FIX: Flatten MultiIndex columns if they exist (Common in 2026 yfinance)
+        if isinstance(nifty_data.columns, pd.MultiIndex):
+            nifty_data.columns = nifty_data.columns.get_level_values(0)
+
+        prev_close = nifty_data['Close'].iloc[-2]
+        curr_price = nifty_data['Close'].iloc[-1]
+        
+        # Ensure we are comparing single float values, not Series
+        gap_nifty = float(((curr_price - prev_close) / prev_close) * 100)
+        
+        # This comparison will now work because gap_nifty is a float
         mood = "🟢 BULLISH" if gap_nifty > 0.2 else "🔴 BEARISH" if gap_nifty < -0.2 else "⚪ NEUTRAL"
         
-        # 2. Woodie's Pivot for Nifty (Support/Resistance)
-        high, low, close = nifty['High'].iloc[-2], nifty['Low'].iloc[-2], nifty['Close'].iloc[-2]
+        # 2. Woodie's Pivot for Nifty
+        high, low, close = nifty_data['High'].iloc[-2], nifty_data['Low'].iloc[-2], nifty_data['Close'].iloc[-2]
         pp = (high + low + 2 * close) / 4
         r1 = (2 * pp) - low
         s1 = (2 * pp) - high
 
-        # 3. F&O Radar (Simplified high-potential scan)
-        # Using ICICIBANK, WIPRO, and SBIN as proxies for sector strength today
+        # 3. F&O Radar
         radar_stocks = ["ICICIBANK.NS", "WIPRO.NS", "SBIN.NS"]
         stock_report = ""
         
         for symbol in radar_stocks:
-            data = yf.download(symbol, period="2d", interval="1h", progress=False)
-            if not data.empty:
-                chg = ((data['Close'].iloc[-1] - data['Close'].iloc[-2]) / data['Close'].iloc[-2]) * 100
+            s_data = yf.download(symbol, period="2d", interval="1h", progress=False)
+            if not s_data.empty:
+                if isinstance(s_data.columns, pd.MultiIndex):
+                    s_data.columns = s_data.columns.get_level_values(0)
+                
+                s_prev = s_data['Close'].iloc[-2]
+                s_curr = s_data['Close'].iloc[-1]
+                chg = float(((s_curr - s_prev) / s_prev) * 100)
                 stock_report += f"• {symbol.replace('.NS','')}: {chg:+.2f}% IEP\n"
 
-        # 4. Final Report Assembly
+        # 4. Final Report
         report = (
             f"🚀 *9:10 AM PREMARKET RADAR*\n"
             f"Date: April 16, 2026\n\n"
