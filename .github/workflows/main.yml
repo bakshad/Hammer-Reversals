@@ -2,7 +2,7 @@ name: Dual-Timeframe F&O Engine
 
 on:
   schedule:
-    # 2026 NEW FEATURE: Native IST Scheduling
+    # 2026 Feature: Native IST Scheduling
     # 9:15 AM to 3:30 PM IST, Monday to Friday
     - cron: '15,30,45 9 * * 1-5'
       timezone: "Asia/Kolkata"
@@ -10,12 +10,13 @@ on:
       timezone: "Asia/Kolkata"
     - cron: '0,15,30 15 * * 1-5'
       timezone: "Asia/Kolkata"
-  workflow_dispatch: # Allows manual trigger for testing
+  workflow_dispatch: # Allows you to manually click "Run workflow"
 
 jobs:
   trade:
     runs-on: ubuntu-latest
-    # CRITICAL: Permissions for pushing back position/alert logs
+    
+    # CRITICAL: Allows the bot to push CSV/JSON files back to your repo
     permissions:
       contents: write
     
@@ -27,11 +28,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Speeds up execution by caching libraries
+          cache: 'pip' # Speeds up runs using your requirements.txt
 
       - name: 📦 Install Dependencies
-        run: |
-          pip install yfinance pandas requests numpy
+        run: pip install yfinance pandas requests numpy
 
       - name: 🚀 Run Reversal Engine
         env:
@@ -40,18 +40,42 @@ jobs:
         run: python reversal_bot_fno.py
 
       - name: 📂 Sync Position Data & Logs
-        if: always() # Run even if the bot encounters a calculation error
+        if: always() # Ensures sync happens even if the bot hits an API timeout
         run: |
-          git config --global user.name "TradingBot-GitHubAction"
+          git config --global user.name "TradingBot"
           git config --global user.email "bot@trading.com"
           
-          # Add all potential tracking files
-          git add alert_status.json active_positions.json weekly_trade_summary.csv || true
+          # Force add all tracking files (bypasses any potential .gitignore conflicts)
+          git add -f alert_status.json active_positions.json weekly_trade_summary.csv open_positions_snapshot.csv || true
           
-          # Commit only if changes exist to avoid workflow errors
-          if git diff --cached --quiet; then
-            echo "No changes in trade logs."
+          # Commit with an IST timestamp so GitHub always detects a distinct change
+          export TZ="Asia/Kolkata"
+          git commit -m "Sync Market Data: $(date +'%Y-%m-%d %H:%M') IST [skip ci]" || echo "No changes to sync"
+          
+          # Push back to the main repository
+          git push
+
+      - name: 📧 Send Weekly Summary (Fridays at Close)
+        # This step only activates during the 3:00 PM - 3:30 PM cron block, or on manual trigger
+        if: github.event.schedule == '0,15,30 15 * * 1-5' || github.event_name == 'workflow_dispatch'
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }} # Must be a 16-character App Password
+        run: |
+          export TZ="Asia/Kolkata"
+          DAY_OF_WEEK=$(date +%u) # 5 equals Friday
+          
+          # Run the email script if it's Friday OR if you clicked "Run workflow" manually
+          if [ "$DAY_OF_WEEK" -eq 5 ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            
+            # Check if either CSV has data before trying to send the email
+            if [ -s "weekly_trade_summary.csv" ] || [ -s "open_positions_snapshot.csv" ]; then
+              echo "Data found. Sending Weekly Report..."
+              python send_weekly_report.py
+            else
+              echo "⚠️ Both CSVs are empty or missing. Skipping email."
+            fi
+            
           else
-            git commit -m "Sync: $(date +'%Y-%m-%d %H:%M') IST [skip ci]"
-            git push
+            echo "Today is not Friday. Skipping weekly email."
           fi
