@@ -7,6 +7,7 @@ import json
 import csv
 import logging
 from datetime import datetime
+import concurrent.futures
 
 # --- Silence Noise ---
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
@@ -18,7 +19,7 @@ MEMORY_FILE = "alert_status_scalp.json"
 POSITIONS_FILE = "active_positions_scalp.json"
 TRADE_LOG = "scalp_trade_summary.csv"
 
-# --- FULL APRIL 2026 F&O UNIVERSE ---
+# [SYMBOLS LIST REMAINS UNCHANGED]
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "ADANIPOWER.NS", "COCHINSHIP.NS", 
     "FORCEMOT.NS", "GODFRYPHLP.NS", "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", 
@@ -68,8 +69,9 @@ def save_json(data, filename):
         json.dump(data, f, indent=4)
 
 def send_telegram(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown"
-    try: requests.get(url, timeout=10)
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+    try: requests.post(url, json=payload, timeout=10)
     except: pass
 
 def safe_fetch(symbol, period="5d", interval="5m"):
@@ -107,7 +109,6 @@ def manage_positions(positions):
         curr_price = float(df['Close'].iloc[-1])
         ema_val = float(df['EMA9'].iloc[-1])
         
-        # 1. Milestone Check (Target 1)
         if not trade.get('t1_reached', False):
             is_t1 = (trade['Side'] == "🟢 BUY" and curr_price >= trade['T1']) or \
                     (trade['Side'] == "🔴 SELL" and curr_price <= trade['T1'])
@@ -115,30 +116,27 @@ def manage_positions(positions):
                 send_telegram(f"🎯 **TARGET 1 REACHED: {symbol.replace('.NS','')}**\nPrice: {curr_price:.2f}\nAction: Move SL to Cost & Ride 9 EMA 🚀")
                 updated[symbol]['t1_reached'] = True
 
-        # 2. Final Exit (9 EMA Cross)
         exit_sig = (trade['Side'] == "🟢 BUY" and curr_price < ema_val) or \
                    (trade['Side'] == "🔴 SELL" and curr_price > ema_val)
         
         if exit_sig:
             pts = round(curr_price - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_price, 2)
             pct = round((pts / trade['Entry']) * 100, 2)
-            
-            # Log to CSV
             file_exists = os.path.isfile(TRADE_LOG)
             with open(TRADE_LOG, 'a', newline='') as f:
                 writer = csv.writer(f)
                 if not file_exists: writer.writerow(['Date', 'Symbol', 'Side', 'Entry', 'Exit', 'Points', 'Gain_Pct'])
                 writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, trade['Side'], trade['Entry'], curr_price, pts, pct])
             
-            send_telegram(f"🏁 **FINAL EXIT: {symbol.replace('.NS','')}**\nReason: 9 EMA Cross\nPrice: {curr_close:.2f}\nPoints: {pts:+.2f} ({pct:+.2f}%)")
+            send_telegram(f"🏁 **FINAL EXIT: {symbol.replace('.NS','')}**\nReason: 9 EMA Cross\nPrice: {curr_price:.2f}\nPoints: {pts:+.2f} ({pct:+.2f}%)")
             del updated[symbol]
     return updated
 
-def get_signal(symbol, memory, positions):
+def process_symbol(symbol, memory, positions):
     df_anchor = safe_fetch(symbol, period="5d", interval="15m")
     df_trigger = safe_fetch(symbol, period="2d", interval="5m")
     pivots = get_woodie_pivots(symbol)
-    if df_anchor is None or df_trigger is None or pivots is None: return memory, positions
+    if df_anchor is None or df_trigger is None or pivots is None: return None
 
     df_trigger['EMA9'] = df_trigger['Close'].ewm(span=9).mean()
     t_look, t_curr = df_trigger.iloc[-5:-1], df_trigger.iloc[-1]
@@ -156,16 +154,17 @@ def get_signal(symbol, memory, positions):
             near_r1 = abs(t_sw_h - pivots['R1']) / pivots['R1'] < 0.0015
             near_pp = abs((t_sw_l if is_long else t_sw_h) - pivots['PP']) / pivots['PP'] < 0.0015
 
-            if (is_long and (near_s1 or near_pp)) or (is_short and (near_r1 or near_pp)):
+            # Correct Level-Target Logic
+            if (is_long and (near_s1 or near_pp or near_r1)) or (is_short and (near_r1 or near_pp or near_s1)):
                 pivot_name = "S1" if near_s1 else "R1" if near_r1 else "PP"
                 direction = "🟢 BULLISH" if is_long else "🔴 BEARISH"
                 
                 if is_long:
                     side, sl = "🟢 BUY", t_sw_l
-                    t1 = pivots['PP'] if near_s1 else pivots['R1']
+                    t1 = pivots['PP'] if near_s1 else (pivots['R1'] if near_pp else pivots['R2'])
                 else:
                     side, sl = "🔴 SELL", t_sw_h
-                    t1 = pivots['PP'] if near_r1 else pivots['S1']
+                    t1 = pivots['PP'] if near_r1 else (pivots['S1'] if near_pp else pivots['S2'])
 
                 msg = (f"🚀 **{direction} REVERSAL**\n"
                        f"---------------------------\n"
@@ -175,15 +174,22 @@ def get_signal(symbol, memory, positions):
                        f"🎯 **Target 1:** {t1:.2f}\n"
                        f"📈 **Strategy:** Ride 9 EMA Trend")
                 
-                send_telegram(msg)
-                memory[f"{symbol}_{ts}"] = True
-                positions[symbol] = {"Entry": round(curr_close, 2), "Side": side, "T1": t1, "t1_reached": False}
-    return memory, positions
+                return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "msg": msg, 
+                        "trade_data": {"Entry": round(curr_close, 2), "Side": side, "T1": t1, "t1_reached": False}}
+    return None
 
 if __name__ == "__main__":
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
     pos = manage_positions(pos)
-    for s in SYMBOLS: 
-        mem, pos = get_signal(s, mem, pos)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_symbol, s, mem, pos): s for s in SYMBOLS}
+        for future in concurrent.futures.as_completed(futures):
+            res = future.result()
+            if res:
+                send_telegram(res["msg"])
+                mem[res["symbol_ts"]] = True
+                pos[res["symbol"]] = res["trade_data"]
+                
     save_json(mem, MEMORY_FILE)
     save_json(pos, POSITIONS_FILE)
