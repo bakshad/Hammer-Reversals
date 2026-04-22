@@ -20,16 +20,17 @@ POSITIONS_FILE = "active_positions.json"
 TRADE_LOG = "weekly_trade_summary.csv"
 OPEN_SNAPSHOT = "open_positions_snapshot.csv"
 
-# --- FULL APRIL 2026 F&O UNIVERSE ---
+# --- FULL APRIL 2026 F&O UNIVERSE (190+ SYMBOLS) ---
+# Updated with April 1st additions: ADANIPOWER, HYUNDAI, COCHINSHIP, etc.
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "ADANIPOWER.NS", "COCHINSHIP.NS", 
     "FORCEMOT.NS", "GODFRYPHLP.NS", "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", 
-    "VMM.NS", "SWIGGY.NS", "JIOFIN.NS", "PAYTM.NS", "ANGELONE.NS",
-    "AARTIIND.NS", "ABB.NS", "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", 
-    "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", 
-    "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", 
-    "ATUL.NS", "AUBANK.NS", "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", 
-    "BAJAJFINSV.NS", "BAJFINANCE.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", 
+    "VMM.NS", "JIOFIN.NS", "PAYTM.NS", "ANGELONE.NS", "AARTIIND.NS", "ABB.NS", 
+    "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENT.NS", 
+    "ADANIGREEN.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", 
+    "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", 
+    "AUBANK.NS", "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", 
+    "BAJFINANCE.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", 
     "BANKBARODA.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", 
     "BHEL.NS", "BIOCON.NS", "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", 
     "CANBK.NS", "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", 
@@ -70,8 +71,9 @@ def save_json(data, filename):
         json.dump(data, f, indent=4)
 
 def send_telegram(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}&parse_mode=Markdown"
-    try: requests.get(url, timeout=10)
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+    try: requests.post(url, json=payload, timeout=10)
     except: pass
 
 def safe_fetch(symbol, period="10d", interval="15m"):
@@ -86,18 +88,14 @@ def get_woodie_pivots(symbol):
     df_d = safe_fetch(symbol, period="2d", interval="1d")
     if df_d is not None and len(df_d) >= 2:
         prev = df_d.iloc[-2]
-        h = float(prev['High'])
-        l = float(prev['Low'])
-        c = float(prev['Close'])
+        h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
         pp = (h + l + 2 * c) / 4
         return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
     return None
 
 def is_pa(candle):
-    # Float conversion for robust reading
     open_p, close_p = float(candle['Open']), float(candle['Close'])
     high_p, low_p = float(candle['High']), float(candle['Low'])
-    
     b = abs(open_p - close_p)
     ls = min(open_p, close_p) - low_p
     us = high_p - max(open_p, close_p)
@@ -114,10 +112,10 @@ def manage_positions(positions):
         df['EMA9'] = df['Close'].ewm(span=9).mean()
         curr = df.iloc[-1]
         
-        # Series to Float Fix
         curr_close = float(curr['Close'].iloc[0]) if isinstance(curr['Close'], pd.Series) else float(curr['Close'])
         curr_ema = float(curr['EMA9'].iloc[0]) if isinstance(curr['EMA9'], pd.Series) else float(curr['EMA9'])
 
+        # Exit Logic: Crosses below 9 EMA for Buy, or above for Sell
         exit_sig = (trade['Side'] == "🟢 BUY" and curr_close < curr_ema) or \
                    (trade['Side'] == "🔴 SELL" and curr_close > curr_ema)
         
@@ -125,35 +123,17 @@ def manage_positions(positions):
             pts = round(curr_close - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_close, 2)
             pct = round((pts / trade['Entry']) * 100, 2)
             
-            # Log to Closed CSV
-            file_exists = os.path.isfile(TRADE_LOG) and os.path.getsize(TRADE_LOG) > 0
             with open(TRADE_LOG, 'a', newline='') as f:
                 writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(['Date', 'Symbol', 'Side', 'Entry', 'Exit', 'Points', 'Gain_Pct'])
                 writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, trade['Side'], trade['Entry'], curr_close, pts, pct])
             
-            send_telegram(f"🏁 **EXIT: {symbol.replace('.NS','')}** @ {curr_close:.2f} (Pts: {pts})")
+            send_telegram(f"🏁 **EXIT: {symbol.replace('.NS','')}**\nSide: {trade['Side']}\nPrice: {curr_close:.2f}\nPoints: {pts:+.2f} ({pct:+.2f}%)")
             del updated[symbol]
         else:
-            # Capture Unrealized MTM
             mtm_pts = round(curr_close - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_close, 2)
-            mtm_pct = round((mtm_pts / trade['Entry']) * 100, 2)
-            open_mtm_data.append({
-                "Symbol": symbol.replace('.NS',''),
-                "Side": trade['Side'],
-                "Entry": trade['Entry'],
-                "LTP": curr_close,
-                "MTM_Pts": mtm_pts,
-                "Gain_Pct": mtm_pct
-            })
+            open_mtm_data.append({"Symbol": symbol.replace('.NS',''), "Side": trade['Side'], "Entry": trade['Entry'], "LTP": curr_close, "MTM_Pts": mtm_pts})
 
-    # Save Open Positions
-    if open_mtm_data:
-        pd.DataFrame(open_mtm_data).to_csv(OPEN_SNAPSHOT, index=False)
-    elif os.path.exists(OPEN_SNAPSHOT):
-        os.remove(OPEN_SNAPSHOT)
-
+    if open_mtm_data: pd.DataFrame(open_mtm_data).to_csv(OPEN_SNAPSHOT, index=False)
     return updated
 
 def process_symbol(symbol, memory, positions):
@@ -170,67 +150,56 @@ def process_symbol(symbol, memory, positions):
     m15_curr = df_15m.iloc[-1]
     ts = str(df_15m.index[-1])
 
-    # Float Conversion for reliable logic
     curr_close = float(m15_curr['Close'].iloc[0]) if isinstance(m15_curr['Close'], pd.Series) else float(m15_curr['Close'])
     curr_open = float(m15_curr['Open'].iloc[0]) if isinstance(m15_curr['Open'], pd.Series) else float(m15_curr['Open'])
     curr_vol = float(m15_curr['Volume'].iloc[0]) if isinstance(m15_curr['Volume'], pd.Series) else float(m15_curr['Volume'])
     prev_close = float(m15_look['Close'].iloc[-1]) if isinstance(m15_look['Close'], pd.Series) else float(m15_look['Close'])
-
     m15_sw_h, m15_sw_l = float(m15_look['High'].max()), float(m15_look['Low'].min())
     
-    # CORE LOGIC: Engulfing with Explicit "No-Gap" Filter
+    # Gap Filter (<0.15% difference from previous close to current open)
     gap_pct = abs((curr_open - prev_close) / prev_close) * 100
-    has_gap = gap_pct > 0.15 # User correction: Ignore visual engulfing if gap is significant
+    has_gap = gap_pct > 0.15 
     
+    # V-Flip Pattern Logic
+    is_vflip = False
+    if (curr_close > m15_sw_h and float(m15_look.iloc[-1]['Low']) < float(m15_look.iloc[-1]['EMA9'])) or \
+       (curr_close < m15_sw_l and float(m15_look.iloc[-1]['High']) > float(m15_look.iloc[-1]['EMA9'])):
+        is_vflip = True
+
+    # Bullish and Bearish Checks
     is_long = (curr_close > m15_sw_h) and not has_gap and (is_h_ham or any([is_pa(m15_look.iloc[i])[0] for i in range(len(m15_look))]))
     is_short = (curr_close < m15_sw_l) and not has_gap and (is_h_star or any([is_pa(m15_look.iloc[i])[1] for i in range(len(m15_look))]))
 
     if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
         avg_vol = float(m15_look['Volume'].mean()) + 1e-9
-        vol_delta = curr_vol / avg_vol
-        
-        # User correction: Updated to >1.1x volume criteria
-        if vol_delta > 1.1:
-            near_s1 = abs(m15_sw_l - pivots['S1']) / pivots['S1'] < 0.0015
-            near_r1 = abs(m15_sw_h - pivots['R1']) / pivots['R1'] < 0.0015
-            near_pp = abs((m15_sw_l if is_long else m15_sw_h) - pivots['PP']) / pivots['PP'] < 0.0015
+        if (curr_vol / avg_vol) > 1.1:
+            pivot_hit = "S1" if abs(m15_sw_l - pivots['S1']) / pivots['S1'] < 0.0015 else "R1" if abs(m15_sw_h - pivots['R1']) / pivots['R1'] < 0.0015 else "PP"
+            
+            side_text = "🟢 BULLISH" if is_long else "🔴 BEARISH"
+            action_side = "🟢 BUY" if is_long else "🔴 SELL"
+            qual = "💎 ELITE" if pivot_hit in ["S1", "R1"] else "🥇 PRIME"
 
-            if is_long:
-                side, sl = "🟢 BUY", m15_sw_l
-                t1, t2 = (pivots['PP'], pivots['R1']) if near_s1 else (pivots['R1'], pivots['R2'])
-                qual = "💎 ELITE" if near_s1 else ("🥇 PRIME" if near_pp else "🚀 HIGH")
-            else:
-                side, sl = "🔴 SELL", m15_sw_h
-                t1, t2 = (pivots['PP'], pivots['S1']) if near_r1 else (pivots['S1'], pivots['S2'])
-                qual = "💎 ELITE" if near_r1 else ("🥇 PRIME" if near_pp else "🚀 HIGH")
+            msg = (f"🚀 **{side_text} REVERSAL**\n"
+                   f"---------------------------\n"
+                   f"📦 **Stock:** {symbol.replace('.NS','')}\n"
+                   f"🔍 **Pattern:** {'⚡ V-Flip' if is_vflip else '🔨 Hammer'}\n"
+                   f"🎯 **Pivot:** {pivot_hit} Reversal\n\n"
+                   f"💰 **Entry:** {curr_close:.2f}\n"
+                   f"📊 **Qual:** {qual} | **Vol:** {(curr_vol/avg_vol):.1f}x")
 
-            return {
-                "symbol_ts": f"{symbol}_{ts}",
-                "symbol": symbol,
-                "msg": (f"🎯 **{side}: {symbol.replace('.NS','')}**\n"
-                       f"---------------------------\n"
-                       f"📊 **Qual:** {qual} | **Anchor:** 1-Hour Reversal\n"
-                       f"💰 **Entry:** {curr_close:.2f} | **SL:** {sl:.2f}\n"
-                       f"🎯 **T1:** {t1:.2f} | **T2:** {t2:.2f}\n"
-                       f"📈 **Trail:** 9 EMA ({float(m15_curr['EMA9']):.2f})"),
-                "trade_data": {"Entry": round(curr_close, 2), "Side": side, "Time": ts}
-            }
+            return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "msg": msg, 
+                    "trade_data": {"Entry": round(curr_close, 2), "Side": action_side, "Type": pivot_hit}}
     return None
 
 if __name__ == "__main__":
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
     pos = manage_positions(pos)
-    
-    # PRO-TIP: Multi-threading for speed. Scans 180+ stocks in ~20 seconds.
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(process_symbol, s, mem, pos): s for s in SYMBOLS}
-        
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result:
-                send_telegram(result["msg"])
-                mem[result["symbol_ts"]] = True
-                pos[result["symbol"]] = result["trade_data"]
-                
+        futures = [executor.submit(process_symbol, s, mem, pos) for s in SYMBOLS]
+        for f in concurrent.futures.as_completed(futures):
+            res = f.result()
+            if res:
+                send_telegram(res["msg"])
+                mem[res["symbol_ts"]], pos[res["symbol"]] = True, res["trade_data"]
     save_json(mem, MEMORY_FILE)
     save_json(pos, POSITIONS_FILE)
