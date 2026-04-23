@@ -16,7 +16,7 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 MEMORY_FILE = "alert_status.json"
-POSITIONS_FILE = "active_positions.json"
+POSITIONS_FILE = "active_positions_reversal.json"
 TRADE_LOG = "weekly_trade_summary.csv"
 OPEN_SNAPSHOT = "open_positions_snapshot.csv"
 
