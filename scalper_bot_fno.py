@@ -19,7 +19,7 @@ MEMORY_FILE = "alert_status_reversal.json"
 POSITIONS_FILE = "active_positions_reversal.json"
 TRADE_LOG = "weekly_trade_summary.csv"
 
-# --- FULL APRIL 2026 F&O UNIVERSE (190+ SYMBOLS) ---
+# --- FULL APRIL 2026 F&O UNIVERSE ---
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "ADANIPOWER.NS", "COCHINSHIP.NS", 
     "FORCEMOT.NS", "GODFRYPHLP.NS", "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", 
@@ -146,16 +146,19 @@ def process_symbol(symbol, memory, positions):
     curr_close, ts = float(m15_curr['Close']), str(df_15m.index[-1])
     m15_sw_h, m15_sw_l = float(m15_look['High'].max()), float(m15_look['Low'].min())
     
-    # Gap Filter
+    # Gap Calculation
     prev_close = float(m15_look['Close'].iloc[-1])
     gap_pct = abs((float(m15_curr['Open']) - prev_close) / prev_close) * 100
-    if gap_pct > 0.15: return None
 
-    # V-Flip Logic
+    # V-Flip Recognition
     is_vflip = False
     if (curr_close > m15_sw_h and float(m15_look.iloc[-1]['Low']) < float(m15_look.iloc[-1]['EMA9'])) or \
        (curr_close < m15_sw_l and float(m15_look.iloc[-1]['High']) > float(m15_look.iloc[-1]['EMA9'])):
         is_vflip = True
+
+    # DYNAMIC GAP FILTER: Allow more room (0.30%) if it's a V-Flip reversal
+    max_allowed_gap = 0.30 if is_vflip else 0.15
+    if gap_pct > max_allowed_gap: return None
 
     is_long = (curr_close > m15_sw_h) and is_h_ham
     is_short = (curr_close < m15_sw_l) and is_h_star
