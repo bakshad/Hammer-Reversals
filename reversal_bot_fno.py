@@ -158,7 +158,7 @@ def process_symbol(symbol, memory, positions):
     
     # Gap Filter (<0.15% difference from previous close to current open)
     gap_pct = abs((curr_open - prev_close) / prev_close) * 100
-    has_gap = gap_pct > 0.15 
+    has_gap = gap_pct > 0.20 
     
     # V-Flip Pattern Logic
     is_vflip = False
