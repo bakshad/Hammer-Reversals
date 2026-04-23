@@ -136,7 +136,7 @@ def process_symbol(symbol, memory, positions):
     if df_15m is None or pivots is None: return None
 
     # Intrabar 1H Logic
-    df_1h = df_15m.resample('1H').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'})
+    df_1h = df_15m.resample('1h').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'})
     h_curr = df_1h.iloc[-1]
     is_h_ham, is_h_star = is_pa(h_curr)
     
