@@ -5,11 +5,5 @@
         "T1": 1383.6000061035156,
         "InitialSL": 1394.9000244140625,
         "t1_reached": false
-    },
-    "AXISBANK.NS": {
-        "Entry": 1365.9,
-        "Side": "\ud83d\udd34 SELL",
-        "T1": 1360.2000122070312,
-        "t1_reached": false
     }
 }
