@@ -1,81 +1,67 @@
-name: Dual-Timeframe F&O Engine
+name: 15m MTF F&O Sniper Engine
 
 on:
   schedule:
-    # 2026 Feature: Native IST Scheduling
-    # 9:15 AM to 3:30 PM IST, Monday to Friday
-    - cron: '15,30,45 9 * * 1-5'
-      timezone: "Asia/Kolkata"
-    - cron: '*/15 10-14 * * 1-5'
-      timezone: "Asia/Kolkata"
-    - cron: '0,15,30 15 * * 1-5'
-      timezone: "Asia/Kolkata"
-  workflow_dispatch: # Allows you to manually click "Run workflow"
+    # Runs every 15 mins during NSE market hours (IST 9:15 - 15:30)
+    # Covers 03:00 to 10:59 UTC
+    - cron: '*/15 3-10 * * 1-5'
+  workflow_dispatch: # Allows manual trigger for testing
 
 jobs:
-  trade:
+  sniper_scalp:
     runs-on: ubuntu-latest
     
-    # CRITICAL: Allows the bot to push CSV/JSON files back to your repo
+    # 🛡️ CRITICAL: Permission to update JSON/CSV files in the repo
     permissions:
-      contents: write
-    
+      contents: write 
+
+    # 🚦 Concurrency ensures only one bot run happens at a time
+    concurrency:
+      group: sniper-scalp-group
+      cancel-in-progress: false
+
     steps:
-      - name: 📥 Checkout Code
+      - name: 📂 Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Speeds up runs using your requirements.txt
+          cache: 'pip' 
 
       - name: 📦 Install Dependencies
-        run: pip install yfinance pandas requests numpy
+        run: |
+          python -m pip install --upgrade pip
+          # Added nsepython for True Open Interest Data
+          pip install yfinance pandas requests numpy nsepython
 
-      - name: 🚀 Run Reversal Engine
+      - name: 🚀 Run MTF Sniper Engine
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python reversal_bot_fno.py
+        run: python scalper_bot_fno.py
 
-      - name: 📂 Sync Position Data & Logs
-        if: always() # Ensures sync happens even if the bot hits an API timeout
+      - name: 📂 Sync Trade Data
+        if: always() 
         run: |
-          git config --global user.name "TradingBot"
-          git config --global user.email "bot@trading.com"
+          git config --global user.name "SniperBot"
+          git config --global user.email "sniper@trading.com"
           
-          # Force add all tracking files (bypasses any potential .gitignore conflicts)
-          git add -f alert_status.json active_positions.json weekly_trade_summary.csv open_positions_snapshot.csv || true
+          # Prevent errors if files don't exist yet
+          touch alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv
           
-          # Commit with an IST timestamp so GitHub always detects a distinct change
-          export TZ="Asia/Kolkata"
-          git commit -m "Sync Market Data: $(date +'%Y-%m-%d %H:%M') IST [skip ci]" || echo "No changes to sync"
+          # Pull latest remote changes to avoid merge conflicts
+          git pull --rebase origin main
           
-          # Push back to the main repository
-          git push
-
-      - name: 📧 Send Weekly Summary (Fridays at Close)
-        # This step only activates during the 3:00 PM - 3:30 PM cron block, or on manual trigger
-        if: github.event.schedule == '0,15,30 15 * * 1-5' || github.event_name == 'workflow_dispatch'
-        env:
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }} # Must be a 16-character App Password
-        run: |
-          export TZ="Asia/Kolkata"
-          DAY_OF_WEEK=$(date +%u) # 5 equals Friday
+          git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
           
-          # Run the email script if it's Friday OR if you clicked "Run workflow" manually
-          if [ "$DAY_OF_WEEK" -eq 5 ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            
-            # Check if either CSV has data before trying to send the email
-            if [ -s "weekly_trade_summary.csv" ] || [ -s "open_positions_snapshot.csv" ]; then
-              echo "Data found. Sending Weekly Report..."
-              python send_weekly_report.py
-            else
-              echo "⚠️ Both CSVs are empty or missing. Skipping email."
-            fi
-            
+          if git diff --staged --quiet; then
+            echo "No changes in trade data. Skipping push."
           else
-            echo "Today is not Friday. Skipping weekly email."
+            git commit -m "Sync MTF Sniper Data [skip ci]"
+            git push origin main
           fi
