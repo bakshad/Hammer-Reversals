@@ -38,7 +38,7 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python scalper_bot_fno.py
+        run: python reversal_bot_fno.py
 
       - name: Sync Trade Data
         if: always() 
