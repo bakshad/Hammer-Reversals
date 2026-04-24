@@ -2,68 +2,58 @@ name: 15m MTF F&O Sniper Engine
 
 on:
   schedule:
-    # Runs every 15 mins during NSE market hours (IST 9:15 - 15:30)
-    # Covers 03:00 to 10:59 UTC
     - cron: '*/15 3-10 * * 1-5'
-  workflow_dispatch: # Allows manual trigger for testing
+  workflow_dispatch: 
 
 jobs:
   sniper_scalp:
     runs-on: ubuntu-latest
     
-    # 🛡️ CRITICAL: Permission to update JSON/CSV files in the repo
     permissions:
       contents: write 
 
-    # 🚦 Concurrency ensures only one bot run happens at a time
     concurrency:
       group: sniper-scalp-group
       cancel-in-progress: false
 
     steps:
-      - name: 📂 Checkout Repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: 🐍 Setup Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip' 
 
-      - name: 📦 Install Dependencies
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # Added nsepython for True Open Interest Data
           pip install yfinance pandas requests numpy nsepython
 
-      - name: 🚀 Run MTF Sniper Engine
+      - name: Run MTF Sniper Engine
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scalper_bot_fno.py
 
-            - name: 📂 Sync Trade Data
+      - name: Sync Trade Data
         if: always() 
         run: |
           git config --global user.name "SniperBot"
           git config --global user.email "sniper@trading.com"
           
-          # Prevent errors if files don't exist yet
           touch alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv
           
-          # 1. ADD THE CHANGES FIRST (Stash them in the staging area)
           git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
           
-          # 2. COMMIT, THEN PULL, THEN PUSH
           if git diff --staged --quiet; then
             echo "No changes in trade data. Skipping push."
           else
             git commit -m "Sync MTF Sniper Data [skip ci]"
-            # Pull updates only AFTER our local changes are safely committed
             git pull --rebase origin main
             git push origin main
           fi
-
