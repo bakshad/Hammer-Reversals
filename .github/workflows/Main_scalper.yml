@@ -3,14 +3,17 @@ name: 5m F&O Sniper Scalper Engine
 on:
   schedule:
     # Runs every 5 mins during NSE market hours (IST 9:15 - 15:30)
-    # 03:45 UTC to 10:00 UTC covers the full Indian session
     - cron: '*/5 3-10 * * 1-5'
-  workflow_dispatch: # Allows you to trigger it manually for testing
+  workflow_dispatch: 
 
 jobs:
   sniper_scalp:
     runs-on: ubuntu-latest
-    # Prevents multiple runs from overlapping if one run takes > 5 mins
+    
+    # CRITICAL: Grant permission to push JSON/CSV updates back to the repo
+    permissions:
+      contents: write 
+
     concurrency:
       group: sniper-scalp-group
       cancel-in-progress: false
@@ -19,14 +22,13 @@ jobs:
       - name: 📂 Checkout Repository
         uses: actions/checkout@v4
         with:
-          # Fetches full history so git push works reliably
           fetch-depth: 0
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Speeds up subsequent runs
+          cache: 'pip' 
 
       - name: 📦 Install Dependencies
         run: |
@@ -40,13 +42,19 @@ jobs:
         run: python scalper_bot_fno.py
 
       - name: 📂 Sync Trade Data
-        if: always() # Ensures data is saved even if the script hits an error
+        if: always() 
         run: |
           git config --global user.name "SniperBot"
           git config --global user.email "sniper@trading.com"
-          # Only add files related to the scalper
+          
+          # Create files if missing to prevent "pathspec" errors
+          touch alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv
+          
+          # Pull latest data to avoid "rejected push" errors
+          git pull --rebase origin main
+          
           git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
-          # Only commit if there are actually changes to the data
+          
           if git diff --staged --quiet; then
             echo "No changes in trade data."
           else
