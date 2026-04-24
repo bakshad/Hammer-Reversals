@@ -45,7 +45,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scalper_bot_fno.py
 
-      - name: 📂 Sync Trade Data
+            - name: 📂 Sync Trade Data
         if: always() 
         run: |
           git config --global user.name "SniperBot"
@@ -54,14 +54,16 @@ jobs:
           # Prevent errors if files don't exist yet
           touch alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv
           
-          # Pull latest remote changes to avoid merge conflicts
-          git pull --rebase origin main
-          
+          # 1. ADD THE CHANGES FIRST (Stash them in the staging area)
           git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
           
+          # 2. COMMIT, THEN PULL, THEN PUSH
           if git diff --staged --quiet; then
             echo "No changes in trade data. Skipping push."
           else
             git commit -m "Sync MTF Sniper Data [skip ci]"
+            # Pull updates only AFTER our local changes are safely committed
+            git pull --rebase origin main
             git push origin main
           fi
+
