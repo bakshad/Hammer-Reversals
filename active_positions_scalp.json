@@ -1,1 +1,23 @@
-{}
+{
+    "GAIL.NS": {
+        "Entry": 165.09,
+        "Side": "\ud83d\udd34 SELL",
+        "T1": 163.02500915527344,
+        "InitialSL": 165.47999572753906,
+        "t1_reached": false
+    },
+    "JSWSTEEL.NS": {
+        "Entry": 1257.0,
+        "Side": "\ud83d\udd34 SELL",
+        "T1": 1247.5499877929688,
+        "InitialSL": 1261.9000244140625,
+        "t1_reached": false
+    },
+    "UNITDSPR.NS": {
+        "Entry": 1391.6,
+        "Side": "\ud83d\udd34 SELL",
+        "T1": 1383.6000061035156,
+        "InitialSL": 1394.9000244140625,
+        "t1_reached": false
+    }
+}
