@@ -2,7 +2,7 @@ name: 5m F&O Sniper Scalper Engine
 
 on:
   schedule:
-    # Runs every 5 mins during NSE market hours (IST 9:15 - 15:30)
+    # IST 9:15 - 15:30 (Monday to Friday)
     - cron: '*/5 3-10 * * 1-5'
   workflow_dispatch: 
 
@@ -10,10 +10,11 @@ jobs:
   sniper_scalp:
     runs-on: ubuntu-latest
     
-    # CRITICAL: Grant permission to push JSON/CSV updates back to the repo
+    # 🛡️ CRITICAL: Permission to update JSON/CSV files in the repo
     permissions:
       contents: write 
 
+    # 🚦 Concurrency ensures only one bot run happens at a time
     concurrency:
       group: sniper-scalp-group
       cancel-in-progress: false
@@ -22,7 +23,9 @@ jobs:
       - name: 📂 Checkout Repository
         uses: actions/checkout@v4
         with:
+          # fetch-depth: 0 ensures we have the history needed to push back safely
           fetch-depth: 0
+          persist-credentials: true
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
@@ -42,21 +45,22 @@ jobs:
         run: python scalper_bot_fno.py
 
       - name: 📂 Sync Trade Data
-        if: always() 
+        if: always() # Syncs even if the script hits a market data error
         run: |
           git config --global user.name "SniperBot"
           git config --global user.email "sniper@trading.com"
           
-          # Create files if missing to prevent "pathspec" errors
+          # 🛠️ Prevent "pathspec" errors by ensuring files exist
           touch alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv
           
-          # Pull latest data to avoid "rejected push" errors
+          # 🔄 Pull latest remote changes to avoid merge conflicts
           git pull --rebase origin main
           
           git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
           
+          # 🚀 Only commit and push if data actually changed
           if git diff --staged --quiet; then
-            echo "No changes in trade data."
+            echo "No changes in trade data. Skipping push."
           else
             git commit -m "Sync Sniper Positions & Logs [skip ci]"
             git push origin main
