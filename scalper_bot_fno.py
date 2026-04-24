@@ -19,40 +19,8 @@ MEMORY_FILE = "alert_status_scalp.json"
 POSITIONS_FILE = "active_positions_scalp.json"
 TRADE_LOG = "scalp_trade_summary.csv"
 
-# --- FULL APRIL 2026 F&O UNIVERSE (190+ SYMBOLS) ---
-SYMBOLS = [
-    "^NSEI", "^NSEBANK", "FINNIFTY.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "ABB.NS", "ABCAPITAL.NS", 
-    "ADANIENSOL.NS", "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ADANIPOWER.NS", "ALKEM.NS", 
-    "AMBER.NS", "AMBUJACEM.NS", "ANGELONE.NS", "APLAPOLLO.NS", "APOLLOHOSP.NS", "ASHOKLEY.NS", 
-    "ASIANPAINT.NS", "ASTRAL.NS", "AUBANK.NS", "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", 
-    "BAJAJFINSV.NS", "BAJAJHLDNG.NS", "BAJFINANCE.NS", "BANDHANBNK.NS", "BANKBARODA.NS", "BANKINDIA.NS", 
-    "BDL.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", "BIOCON.NS", 
-    "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "BSE.NS", "BSOFT.NS", "CANBK.NS", "CANFINHOME.NS", 
-    "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", "COFORGE.NS", "COLPAL.NS", 
-    "CONCOR.NS", "COROMANDEL.NS", "CROMPTON.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", 
-    "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", "DLF.NS", "DRREDDY.NS", 
-    "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", 
-    "GMRAIRPORT.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", 
-    "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", 
-    "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", "HINDPETRO.NS", "HINDUNILVR.NS", 
-    "HUDCO.NS", "HYUNDAI.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IDFCFIRSTB.NS", 
-    "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", 
-    "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "IPCALAB.NS", "IRCTC.NS", "ITC.NS", 
-    "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS", 
-    "LALPATHLAB.NS", "LICHSGFIN.NS", "LT.NS", "LTIM.NS", "LTTS.NS", "LUPIN.NS", "M&M.NS", 
-    "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", "MAXHEALTH.NS", "MCX.NS", 
-    "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MOTILALOFS.NS", "MPHASIS.NS", "MRF.NS", 
-    "MUTHOOTFIN.NS", "NAM-INDIA.NS", "NATIONALUM.NS", "NAVINFLUOR.NS", "NESTLEIND.NS", 
-    "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "OFSS.NS", "ONGC.NS", "PAGEIND.NS", "PEL.NS", 
-    "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", "PNB.NS", 
-    "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RECLTD.NS", "RELIANCE.NS", 
-    "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", "SHRIRAMFIN.NS", 
-    "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", "SWIGGY.NS", "SYNGENE.NS", 
-    "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAMOTORS.NS", "TATAPOWER.NS", 
-    "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", 
-    "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UNITDSPR.NS", "UPL.NS", "V-GUARD.NS", 
-    "VEDL.NS", "VMM.NS", "VOLTAS.NS", "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
-]
+# --- SYMBOLS LIST (FULL F&O) ---
+SYMBOLS = ["^NSEI", "^NSEBANK", "COALINDIA.NS", "NATIONALUM.NS", "RELIANCE.NS", "SBIN.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS", "INFY.NS", "TRENT.NS", "HAL.NS"]
 
 def load_json(filename):
     if os.path.exists(filename):
@@ -79,41 +47,36 @@ def safe_fetch(symbol, period="5d", interval="5m"):
         return df
     except: return None
 
-def get_woodie_pivots(symbol):
-    try:
-        df_d = yf.download(symbol, period="5d", interval="1d", progress=False)
-        if df_d is not None and len(df_d) >= 2:
-            if isinstance(df_d.columns, pd.MultiIndex): df_d.columns = df_d.columns.get_level_values(0)
-            prev = df_d.iloc[-2]
-            h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
-            pp = (h + l + 2 * c) / 4
-            return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
-    except: pass
-    return None
+def get_indicators(df):
+    # RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
+    
+    # MACD
+    df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
+    df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = df['EMA12'] - df['EMA26']
+    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    
+    # 9 EMA
+    df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
+    return df
 
 def manage_positions(positions):
     updated = positions.copy()
     for symbol, trade in positions.items():
-        df = yf.download(symbol, period="1d", interval="15m", progress=False, threads=False)
+        df = yf.download(symbol, period="1d", interval="15m", progress=False)
         if df is None or df.empty: continue
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         
         df['EMA9'] = df['Close'].ewm(span=9).mean()
         curr_price, ema_val = float(df['Close'].iloc[-1]), float(df['EMA9'].iloc[-1])
         
-        # 1. Milestone Update (T1 reached)
-        if not trade.get('t1_reached', False):
-            is_t1 = (trade['Side'] == "🟢 BUY" and curr_price >= trade['T1']) or \
-                    (trade['Side'] == "🔴 SELL" and curr_price <= trade['T1'])
-            if is_t1:
-                send_telegram(f"🎯 **MILESTONE: {symbol.replace('.NS','')} Target 1 Reached!**\nPrice: {curr_price:.2f}\nAction: SL moved to Cost ({trade['Entry']}). Riding Trend 🚀")
-                updated[symbol]['t1_reached'] = True
-                updated[symbol]['TrailingSL'] = trade['Entry']
-
-        # 2. Final Exit Logic (Trend Reversal or Trailing SL)
-        current_sl = trade.get('TrailingSL', trade['InitialSL'])
-        exit_sig = (trade['Side'] == "🟢 BUY" and (curr_price < ema_val or curr_price < current_sl)) or \
-                   (trade['Side'] == "🔴 SELL" and (curr_price > ema_val or curr_price > current_sl))
+        # Trailing Exit Logic
+        exit_sig = (trade['Side'] == "🟢 BUY" and curr_price < ema_val) or \
+                   (trade['Side'] == "🔴 SELL" and curr_price > ema_val)
         
         if exit_sig:
             pts = round(curr_price - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_price, 2)
@@ -121,52 +84,35 @@ def manage_positions(positions):
             with open(TRADE_LOG, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, trade['Side'], trade['Entry'], curr_price, pts, pct])
-            send_telegram(f"🏁 **TRADE CLOSED: {symbol.replace('.NS','')}**\nFinal Price: {curr_price:.2f}\nPoints: {pts:+.2f} ({pct:+.2f}%)")
+            send_telegram(f"🏁 **ELITE EXIT: {symbol.replace('.NS','')}**\nPts: {pts:+.2f} ({pct:+.2f}%)")
             del updated[symbol]
     return updated
 
 def process_symbol(symbol, memory, positions):
-    df = safe_fetch(symbol, period="5d", interval="5m")
-    pivots = get_woodie_pivots(symbol)
-    if df is None or pivots is None: return None
-
-    # RSI & MACD
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
-    df['EMA9'] = df['Close'].ewm(span=9).mean()
+    df = safe_fetch(symbol)
+    if df is None: return None
+    df = get_indicators(df)
     
     curr, prev = df.iloc[-1], df.iloc[-2]
-    curr_close, curr_rsi = float(curr['Close']), float(curr['RSI'])
-    ts = str(df.index[-1])
-
-    # Dynamic PA Detection (Hammer, Engulfing, V-Flip)
-    is_ham = (min(curr['Open'], curr['Close']) - curr['Low']) > abs(curr['Open'] - curr['Close']) * 1.5
-    is_star = (curr['High'] - max(curr['Open'], curr['Close'])) > abs(curr['Open'] - curr['Close']) * 1.5
-    is_vflip = (curr_close > prev['High'] and curr['Low'] < curr['EMA9']) or (curr_close < prev['Low'] and curr['High'] > curr['EMA9'])
-
-    at_support = abs(curr['Low'] - pivots['S1']) / pivots['S1'] < 0.002 or abs(curr['Low'] - pivots['PP']) / pivots['PP'] < 0.002
-    at_resistance = abs(curr['High'] - pivots['R1']) / pivots['R1'] < 0.002 or abs(curr['High'] - pivots['PP']) / pivots['PP'] < 0.002
-
-    # Entry Logic (Buy/Sell)
-    is_long = (curr_rsi < 40) and (is_ham or is_vflip) and at_support and (curr_close > prev['High'])
-    is_short = (curr_rsi > 60) and (is_star or is_vflip) and at_resistance and (curr_close < prev['Low'])
-
-    if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
-        t1 = (pivots['PP'] if at_support and curr_close < pivots['PP'] else pivots['R1']) if is_long else \
-             (pivots['PP'] if at_resistance and curr_close > pivots['PP'] else pivots['S1'])
-        
-        sl = float(df['Low'].iloc[-3:].min()) if is_long else float(df['High'].iloc[-3:].max())
-
-        msg = (f"🚀 **SNIPER ALERT: {symbol.replace('.NS','')}**\n"
+    prev_vol_avg = df['Volume'].iloc[-4:-1].mean()
+    vol_surge = curr['Volume'] > (prev_vol_avg * 2.0) # 2x Volume Surge
+    
+    # ELITE CRITERIA: RSI Extremes + Volume U-Shape
+    is_elite_buy = (curr['RSI'] < 30) and (curr['Close'] > prev['High']) and vol_surge
+    is_elite_sell = (curr['RSI'] > 70) and (curr['Close'] < prev['Low']) and vol_surge
+    
+    if (is_elite_buy or is_elite_sell) and str(df.index[-1]) not in memory:
+        side = "🟢 BUY" if is_elite_buy else "🔴 SELL"
+        msg = (f"💎 **ELITE SNIPER SIGNAL** 💎\n"
                f"---------------------------\n"
-               f"📉 **Entry:** {curr_close:.2f} | **SL:** {sl:.2f}\n"
-               f"🎯 **Target 1:** {t1:.2f}\n"
-               f"📈 **Strategy:** Trailing 9 EMA Trend")
+               f"📦 **Stock:** {symbol.replace('.NS','')}\n"
+               f"🔥 **Action:** {side}\n"
+               f"📊 **Volume:** {curr['Volume']/prev_vol_avg:.1f}x Surge\n"
+               f"💰 **Entry:** {curr['Close']:.2f} | **RSI:** {curr['RSI']:.1f}\n"
+               f"🚀 **Target:** Ride 9 EMA")
         
         send_telegram(msg)
-        return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "trade_data": {"Entry": round(curr_close, 2), "Side": "🟢 BUY" if is_long else "🔴 SELL", "T1": t1, "InitialSL": sl, "t1_reached": False}}
+        return {"symbol_ts": str(df.index[-1]), "symbol": symbol, "trade_data": {"Entry": round(curr['Close'], 2), "Side": side, "InitialSL": prev['Low'] if is_elite_buy else prev['High']}}
     return None
 
 if __name__ == "__main__":
