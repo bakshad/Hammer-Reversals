@@ -36,8 +36,7 @@ jobs:
       - name: 📦 Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install yfinance pandas requests numpy
-          nsepython pandas-ta
+          pip install yfinance pandas requests numpy nsepython pandas-ta
 
       - name: 🚀 Run Sniper Engine
         env:
@@ -54,15 +53,14 @@ jobs:
           # 🛠️ Prevent "pathspec" errors by ensuring files exist
           touch alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv
           
-          # 🔄 Pull latest remote changes to avoid merge conflicts
-          git pull --rebase origin main
-          
+          # 1. ADD LOCAL CHANGES FIRST
           git add alert_status_scalp.json active_positions_scalp.json scalp_trade_summary.csv || true
           
-          # 🚀 Only commit and push if data actually changed
+          # 2. COMMIT, PULL, THEN PUSH
           if git diff --staged --quiet; then
             echo "No changes in trade data. Skipping push."
           else
             git commit -m "Sync Sniper Positions & Logs [skip ci]"
+            git pull --rebase origin main
             git push origin main
           fi
