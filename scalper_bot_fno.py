@@ -8,7 +8,6 @@ import csv
 import logging
 from datetime import datetime
 import concurrent.futures
-import pandas_ta as ta
 from nsepython import nse_fno
 
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
@@ -81,6 +80,44 @@ def safe_fetch(symbol, period, interval):
         return df
     except: return None
 
+def calculate_supertrend(df, length=7, multiplier=2.0):
+    hl2 = (df['High'] + df['Low']) / 2
+    
+    # Calculate True Range (TR) and Average True Range (ATR)
+    df['TR'] = np.maximum(
+        df['High'] - df['Low'],
+        np.maximum(
+            abs(df['High'] - df['Close'].shift(1)),
+            abs(df['Low'] - df['Close'].shift(1))
+        )
+    )
+    df['ATR'] = df['TR'].rolling(window=length).mean()
+    
+    # Basic Upper and Lower Bands
+    df['Basic_UB'] = hl2 + (multiplier * df['ATR'])
+    df['Basic_LB'] = hl2 - (multiplier * df['ATR'])
+    
+    # Final Upper and Lower Bands
+    df['Final_UB'] = 0.00
+    df['Final_LB'] = 0.00
+    for i in range(length, len(df)):
+        df.loc[df.index[i], 'Final_UB'] = df['Basic_UB'].iloc[i] if df['Basic_UB'].iloc[i] < df['Final_UB'].iloc[i-1] or df['Close'].iloc[i-1] > df['Final_UB'].iloc[i-1] else df['Final_UB'].iloc[i-1]
+        df.loc[df.index[i], 'Final_LB'] = df['Basic_LB'].iloc[i] if df['Basic_LB'].iloc[i] > df['Final_LB'].iloc[i-1] or df['Close'].iloc[i-1] < df['Final_LB'].iloc[i-1] else df['Final_LB'].iloc[i-1]
+    
+    # Supertrend Line
+    df['Supertrend'] = 0.00
+    for i in range(length, len(df)):
+        if df['Supertrend'].iloc[i-1] == df['Final_UB'].iloc[i-1] and df['Close'].iloc[i] <= df['Final_UB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_UB'].iloc[i]
+        elif df['Supertrend'].iloc[i-1] == df['Final_UB'].iloc[i-1] and df['Close'].iloc[i] > df['Final_UB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_LB'].iloc[i]
+        elif df['Supertrend'].iloc[i-1] == df['Final_LB'].iloc[i-1] and df['Close'].iloc[i] >= df['Final_LB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_LB'].iloc[i]
+        elif df['Supertrend'].iloc[i-1] == df['Final_LB'].iloc[i-1] and df['Close'].iloc[i] < df['Final_LB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_UB'].iloc[i]
+            
+    return df['Supertrend']
+
 def get_oi_data(symbol):
     try:
         data = nse_fno(symbol.replace(".NS", ""))
@@ -102,8 +139,8 @@ def manage_positions(positions):
         df_15m = safe_fetch(symbol, "5d", "15m")
         if df_15m is None or len(df_15m) < 20: continue
         
-        st_df = ta.supertrend(df_15m['High'], df_15m['Low'], df_15m['Close'], length=7, multiplier=2)
-        df_15m['Supertrend'] = st_df['SUPERT_7_2.0']
+        # Calculate native supertrend
+        df_15m['Supertrend'] = calculate_supertrend(df_15m, length=7, multiplier=2.0)
         
         curr_price = float(df_15m['Close'].iloc[-1])
         st_val = float(df_15m['Supertrend'].iloc[-1])
@@ -141,8 +178,7 @@ def process_symbol(symbol, memory, positions, mood):
     if df_15m is None or len(df_15m) < 21: return None
     
     df_15m['EMA20'] = df_15m['Close'].ewm(span=20, adjust=False).mean()
-    st_df = ta.supertrend(df_15m['High'], df_15m['Low'], df_15m['Close'], length=7, multiplier=2)
-    df_15m['Supertrend'] = st_df['SUPERT_7_2.0']
+    df_15m['Supertrend'] = calculate_supertrend(df_15m, length=7, multiplier=2.0)
     
     curr = df_15m.iloc[-1]
     prev = df_15m.iloc[-2]
@@ -162,7 +198,6 @@ def process_symbol(symbol, memory, positions, mood):
     cond_ema_bear = curr['Close'] < curr['EMA20']
     cond_st_bear = curr['Close'] < curr['Supertrend']
     just_crossed_bear = prev['Close'] >= prev['Supertrend'] and curr['Close'] < curr['Supertrend']
-    # Ensure red candle for breakdown
     is_short = cond_ema_bear and cond_st_bear and (curr['Close'] < curr['Open']) and (curr['Volume'] > 100000) and just_crossed_bear
 
     # 🛡️ MARKET MOOD FILTER
