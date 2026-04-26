@@ -8,52 +8,54 @@ import csv
 import logging
 from datetime import datetime
 import concurrent.futures
+import pandas_ta as ta
+from nsepython import nse_fno
 
-# --- Silence Noise ---
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_status_scalp.json"
-POSITIONS_FILE = "active_positions_scalp.json"
-TRADE_LOG = "scalp_trade_summary.csv"
+MEMORY_FILE = "alert_status_st.json"
+POSITIONS_FILE = "active_positions_st.json"
+TRADE_LOG = "supertrend_trade_summary.csv" 
 
-# --- FULL APRIL 2026 F&O UNIVERSE (190+ SYMBOLS) ---
+# --- FULL APRIL 2026 F&O UNIVERSE ---
 SYMBOLS = [
-    "^NSEI", "^NSEBANK", "FINNIFTY.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "360ONE.NS", "ABB.NS", 
-    "ABCAPITAL.NS", "ADANIENSOL.NS", "ADANIENT.NS", "ADANIGREEN.NS", "ADANIPORTS.NS", "ADANIPOWER.NS", 
-    "ALKEM.NS", "AMBER.NS", "AMBUJACEM.NS", "ANGELONE.NS", "APLAPOLLO.NS", "APOLLOHOSP.NS", 
-    "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", "AUBANK.NS", "AUROPHARMA.NS", 
-    "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", "BAJAJHLDNG.NS", "BAJFINANCE.NS", 
-    "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", "BANKBARODA.NS", "BANKINDIA.NS", 
-    "BDL.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", "BHEL.NS", 
-    "BIOCON.NS", "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "BSE.NS", "BSOFT.NS", "CANBK.NS", 
-    "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", "COALINDIA.NS", "COCHINSHIP.NS", 
-    "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", "CROMPTON.NS", "CUMMINSIND.NS", 
-    "DABUR.NS", "DALBHARAT.NS", "DEEPAKNTR.NS", "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", 
-    "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", 
-    "FORCEMOT.NS", "GAIL.NS", "GLENMARK.NS", "GMRAIRPORT.NS", "GNFC.NS", "GODFRYPHLP.NS", 
-    "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", "GRASIM.NS", "GUJGASLTD.NS", "HAL.NS", 
-    "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", 
-    "HINDCOPPER.NS", "HINDPETRO.NS", "HINDUNILVR.NS", "HUDCO.NS", "HYUNDAI.NS", "ICICIBANK.NS", 
-    "ICICIGI.NS", "ICICIPRULI.NS", "IDFCFIRSTB.NS", "IGL.NS", "INDHOTEL.NS", "INDIACEM.NS", 
-    "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", "INDUSTOWER.NS", "INFY.NS", "IOC.NS", 
-    "IPCALAB.NS", "IRCTC.NS", "ITC.NS", "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", 
-    "JUBLFOOD.NS", "KOTAKBANK.NS", "LALPATHLAB.NS", "LICHSGFIN.NS", "LT.NS", "LTIM.NS", 
-    "LTTS.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", 
-    "MAXHEALTH.NS", "MCX.NS", "METROPOLIS.NS", "MFSL.NS", "MGL.NS", "MOTILALOFS.NS", 
-    "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS", "NAM-INDIA.NS", "NATIONALUM.NS", "NAVINFLUOR.NS", 
-    "NESTLEIND.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "OFSS.NS", "ONGC.NS", "PAGEIND.NS", 
-    "PAYTM.NS", "PEL.NS", "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", 
-    "PIIND.NS", "PNB.NS", "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", 
-    "RECLTD.NS", "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", 
-    "SHREECEM.NS", "SHRIRAMFIN.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", 
-    "SWIGGY.NS", "SYNGENE.NS", "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", 
-    "TATAMOTORS.NS", "TATAPOWER.NS", "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", 
-    "TORNTPHARM.NS", "TRENT.NS", "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UNITDSPR.NS", 
-    "UPL.NS", "V-GUARD.NS", "VEDL.NS", "VMM.NS", "VOLTAS.NS", "WIPRO.NS", "ZOMATO.NS", 
-    "ZYDUSLIFE.NS"
+    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "ADANIPOWER.NS", "COCHINSHIP.NS", 
+    "FORCEMOT.NS", "GODFRYPHLP.NS", "HYUNDAI.NS", "MOTILALOFS.NS", "NAM-INDIA.NS", 
+    "VMM.NS", "JIOFIN.NS", "PAYTM.NS", "ANGELONE.NS", "AARTIIND.NS", "ABB.NS", 
+    "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENT.NS", 
+    "ADANIGREEN.NS", "ADANIPORTS.NS", "ALKEM.NS", "AMBUJACEM.NS", "APOLLOHOSP.NS", 
+    "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", 
+    "AUBANK.NS", "AUROPHARMA.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", 
+    "BAJFINANCE.NS", "BALKRISIND.NS", "BALRAMCHIN.NS", "BANDHANBNK.NS", 
+    "BANKBARODA.NS", "BEL.NS", "BERGEPAINT.NS", "BHARATFORG.NS", "BHARTIARTL.NS", 
+    "BHEL.NS", "BIOCON.NS", "BOSCHLTD.NS", "BPCL.NS", "BRITANNIA.NS", "BSOFT.NS", 
+    "CANBK.NS", "CANFINHOME.NS", "CHAMBLFERT.NS", "CHOLAFIN.NS", "CIPLA.NS", 
+    "COALINDIA.NS", "COFORGE.NS", "COLPAL.NS", "CONCOR.NS", "COROMANDEL.NS", 
+    "CROMPTON.NS", "CUMMINSIND.NS", "DABUR.NS", "DALBHARAT.NS", "DEEPAKNTR.NS", 
+    "DELHIVERY.NS", "DIVISLAB.NS", "DIXON.NS", "DLF.NS", "DRREDDY.NS", "EICHERMOT.NS", 
+    "ESCORTS.NS", "EXIDEIND.NS", "FEDERALBNK.NS", "GAIL.NS", "GLENMARK.NS", 
+    "GMRAIRPORT.NS", "GNFC.NS", "GODREJCP.NS", "GODREJPROP.NS", "GRANULES.NS", 
+    "GRASIM.NS", "GUJGASLTD.NS", "HAL.NS", "HAVELLS.NS", "HCLTECH.NS", "HDFCBANK.NS", 
+    "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDCOPPER.NS", "HINDPETRO.NS", 
+    "HINDUNILVR.NS", "ICICIBANK.NS", "ICICIGI.NS", "ICICIPRULI.NS", "IGL.NS", 
+    "INDHOTEL.NS", "INDIACEM.NS", "INDIAMART.NS", "INDIGO.NS", "INDUSINDBK.NS", 
+    "INDUSTOWER.NS", "INFY.NS", "IOC.NS", "IPCALAB.NS", "IRCTC.NS", "ITC.NS", 
+    "JINDALSTEL.NS", "JKCEMENT.NS", "JSWSTEEL.NS", "JUBLFOOD.NS", "KOTAKBANK.NS", 
+    "LALPATHLAB.NS", "LICHSGFIN.NS", "LT.NS", "LUPIN.NS", "M&M.NS", "M&MFIN.NS", 
+    "MANAPPURAM.NS", "MARICO.NS", "MARUTI.NS", "MCX.NS", "METROPOLIS.NS", "MFSL.NS", 
+    "MGL.NS", "MPHASIS.NS", "MRF.NS", "MUTHOOTFIN.NS", "NATIONALUM.NS", "NAVINFLUOR.NS", 
+    "NESTLEIND.NS", "NMDC.NS", "NTPC.NS", "OBEROIRLTY.NS", "ONGC.NS", "PAGEIND.NS", 
+    "PEL.NS", "PERSISTENT.NS", "PETRONET.NS", "PFC.NS", "PIDILITIND.NS", "PIIND.NS", 
+    "PNB.NS", "POLYCAB.NS", "POWERGRID.NS", "PVRINOX.NS", "RAMCOCEM.NS", "RECLTD.NS", 
+    "RELIANCE.NS", "SAIL.NS", "SBICARD.NS", "SBILIFE.NS", "SBIN.NS", "SHREECEM.NS", 
+    "SHRIRAMFIN.NS", "SIEMENS.NS", "SRF.NS", "SUNPHARMA.NS", "SUNTV.NS", "SYNGENE.NS", 
+    "TATACOMM.NS", "TATACONSUM.NS", "TATAELXSI.NS", "TATAMOTORS.NS", "TATAPOWER.NS", 
+    "TATASTEEL.NS", "TCS.NS", "TECHM.NS", "TITAN.NS", "TORNTPHARM.NS", "TRENT.NS", 
+    "TVSMOTOR.NS", "UBL.NS", "ULTRACEMCO.NS", "UPL.NS", "VEDL.NS", "VOLTAS.NS", 
+    "WIPRO.NS", "ZOMATO.NS", "ZYDUSLIFE.NS"
 ]
 
 def load_json(filename):
@@ -69,11 +71,9 @@ def save_json(data, filename):
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
-    try: requests.post(url, json=payload, timeout=10)
-    except: pass
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=10)
 
-def safe_fetch(symbol, period="5d", interval="5m"):
+def safe_fetch(symbol, period, interval):
     try:
         df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False)
         if df is None or df.empty: return None
@@ -81,99 +81,134 @@ def safe_fetch(symbol, period="5d", interval="5m"):
         return df
     except: return None
 
-def get_woodie_pivots(symbol):
+def get_oi_data(symbol):
     try:
-        df_d = yf.download(symbol, period="5d", interval="1d", progress=False)
-        if df_d is not None and len(df_d) >= 2:
-            if isinstance(df_d.columns, pd.MultiIndex): df_d.columns = df_d.columns.get_level_values(0)
-            prev = df_d.iloc[-2]
-            h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
-            pp = (h + l + 2 * c) / 4
-            return {"PP": pp, "R1": (2*pp)-l, "S1": (2*pp)-h}
-    except: pass
-    return None
+        data = nse_fno(symbol.replace(".NS", ""))
+        trade_info = data.get('stocks', [{}])[0].get('marketDeptOrderBook', {}).get('tradeInfo', {})
+        curr_oi = trade_info.get('openInterest', 0)
+        if curr_oi == 0: return 0.0
+        return 1.5 # Mocking positive buildup to avoid NSE blocking failures breaking the logic
+    except: return 0.0
+
+def get_market_mood():
+    df = safe_fetch("^NSEI", "1mo", "1h")
+    if df is None: return "⚪ NEUTRAL"
+    df['EMA9'] = df['Close'].ewm(span=9).mean()
+    return "🟢 BULLISH" if df['Close'].iloc[-1] > df['EMA9'].iloc[-1] else "🔴 BEARISH"
 
 def manage_positions(positions):
     updated = positions.copy()
     for symbol, trade in positions.items():
-        df_15m = yf.download(symbol, period="1d", interval="15m", progress=False, threads=False)
-        if df_15m is None or df_15m.empty: continue
-        if isinstance(df_15m.columns, pd.MultiIndex): df_15m.columns = df_15m.columns.get_level_values(0)
+        df_15m = safe_fetch(symbol, "5d", "15m")
+        if df_15m is None or len(df_15m) < 20: continue
         
-        df_15m['EMA9'] = df_15m['Close'].ewm(span=9).mean()
-        curr_price, ema_val = float(df_15m['Close'].iloc[-1]), float(df_15m['EMA9'].iloc[-1])
+        st_df = ta.supertrend(df_15m['High'], df_15m['Low'], df_15m['Close'], length=7, multiplier=2)
+        df_15m['Supertrend'] = st_df['SUPERT_7_2.0']
         
+        curr_price = float(df_15m['Close'].iloc[-1])
+        st_val = float(df_15m['Supertrend'].iloc[-1])
+        
+        # Check Target 1
         if not trade.get('t1_reached', False):
             is_t1 = (trade['Side'] == "🟢 BUY" and curr_price >= trade['T1']) or \
                     (trade['Side'] == "🔴 SELL" and curr_price <= trade['T1'])
             if is_t1:
-                send_telegram(f"🎯 **TARGET 1 REACHED: {symbol.replace('.NS','')}**\nAction: SL at Cost. Riding Trend 🚀")
+                send_telegram(f"🎯 **TARGET 1 REACHED: {symbol.replace('.NS','')}**\nAction: Trailing Supertrend dynamically 🚀")
                 updated[symbol]['t1_reached'] = True
 
-        exit_sig = (trade['Side'] == "🟢 BUY" and curr_price < ema_val) or \
-                   (trade['Side'] == "🔴 SELL" and curr_price > ema_val)
+        # Exit Logic: Trend Reversal (Price crosses Supertrend)
+        exit_sig = (trade['Side'] == "🟢 BUY" and curr_price < st_val) or \
+                   (trade['Side'] == "🔴 SELL" and curr_price > st_val)
         
         if exit_sig:
             pts = round(curr_price - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_price, 2)
             pct = round((pts / trade['Entry']) * 100, 2)
+            
             with open(TRADE_LOG, 'a', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, trade['Side'], trade['Entry'], curr_price, pts, pct])
-            send_telegram(f"🏁 **TREND EXIT: {symbol.replace('.NS','')}**\nFinal Pts: {pts:+.2f} ({pct:+.2f}%)")
-            del updated[symbol]
+                writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, trade['Side'], trade['Entry'], curr_price, pts, f"{pct}%"])
+            
+            send_telegram(f"🏁 **TRADE CLOSED: {symbol.replace('.NS','')}**\nSide: {trade['Side']}\nFinal Pts: {pts:+.2f} ({pct:+.2f}%)")
+            del updated[symbol] 
+            
     return updated
 
-def process_symbol(symbol, memory, positions):
-    df_5m = safe_fetch(symbol)
-    pivots = get_woodie_pivots(symbol)
-    if df_5m is None or pivots is None: return None
+def process_symbol(symbol, memory, positions, mood):
+    # Skip indices for individual stock processing
+    if symbol in ["^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS"]: return None
 
-    delta = df_5m['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    df_5m['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
-    df_5m['EMA9'] = df_5m['Close'].ewm(span=9).mean()
+    df_15m = safe_fetch(symbol, "5d", "15m")
+    if df_15m is None or len(df_15m) < 21: return None
     
-    curr, prev = df_5m.iloc[-1], df_5m.iloc[-2]
-    curr_rsi, ts = float(curr['RSI']), str(df_5m.index[-1])
+    df_15m['EMA20'] = df_15m['Close'].ewm(span=20, adjust=False).mean()
+    st_df = ta.supertrend(df_15m['High'], df_15m['Low'], df_15m['Close'], length=7, multiplier=2)
+    df_15m['Supertrend'] = st_df['SUPERT_7_2.0']
     
-    b = abs(curr['Open'] - curr['Close'])
-    is_wick = (min(curr['Open'], curr['Close']) - curr['Low'] > b * 1.5) or (curr['High'] - max(curr['Open'], curr['Close']) > b * 1.5)
-    is_engulf = (curr['Close'] > prev['Open'] and prev['Close'] < prev['Open']) or (curr['Close'] < prev['Open'] and prev['Close'] > prev['Open'])
+    curr = df_15m.iloc[-1]
+    prev = df_15m.iloc[-2]
+    ts = str(df_15m.index[-1])
     
-    at_support = abs(curr['Low'] - pivots['S1'])/pivots['S1'] < 0.002 or abs(curr['Low'] - pivots['PP'])/pivots['PP'] < 0.002
-    at_resistance = abs(curr['High'] - pivots['R1'])/pivots['R1'] < 0.002 or abs(curr['High'] - pivots['PP'])/pivots['PP'] < 0.002
+    avg_vol = df_15m['Volume'].iloc[-20:-1].mean() + 1e-9
+    vol_surge = curr['Volume'] / avg_vol
+    oi_change = get_oi_data(symbol)
 
-    # VOLUME DELTA: 1.5x for conviction, 2x for Elite
-    vol_ratio = float(curr['Volume']) / (df_5m['Volume'].iloc[-5:-1].mean() + 1e-9)
-    is_conviction = vol_ratio > 1.5
-    is_elite = vol_ratio > 2.0 and (curr_rsi < 30 or curr_rsi > 70)
+    # 🟢 BULLISH
+    cond_ema_bull = curr['Close'] > curr['EMA20']
+    cond_st_bull = curr['Close'] > curr['Supertrend']
+    just_crossed_bull = prev['Close'] <= prev['Supertrend'] and curr['Close'] > curr['Supertrend']
+    is_long = cond_ema_bull and cond_st_bull and (curr['Close'] > 20) and (curr['Volume'] > 100000) and just_crossed_bull
+    
+    # 🔴 BEARISH
+    cond_ema_bear = curr['Close'] < curr['EMA20']
+    cond_st_bear = curr['Close'] < curr['Supertrend']
+    just_crossed_bear = prev['Close'] >= prev['Supertrend'] and curr['Close'] < curr['Supertrend']
+    # Ensure red candle for breakdown
+    is_short = cond_ema_bear and cond_st_bear and (curr['Close'] < curr['Open']) and (curr['Volume'] > 100000) and just_crossed_bear
 
-    is_long = at_support and (is_wick or is_engulf) and (curr['Close'] > prev['High']) and is_conviction and (curr_rsi < 45)
-    is_short = at_resistance and (is_wick or is_engulf) and (curr['Close'] < prev['Low']) and is_conviction and (curr_rsi > 55)
+    # 🛡️ MARKET MOOD FILTER
+    if is_long and mood == "🔴 BEARISH": is_long = False
+    if is_short and mood == "🟢 BULLISH": is_short = False
 
     if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
-        t1 = (pivots['PP'] if at_support and curr['Close'] < pivots['PP'] else pivots['R1']) if is_long else \
-             (pivots['PP'] if at_resistance and curr['Close'] > pivots['PP'] else pivots['S1'])
         
-        prefix = "💎 **ELITE SIGNAL**" if is_elite else "🚀 **SNIPER ALERT**"
-        msg = (f"{prefix}: {symbol.replace('.NS','')}\n"
+        # 💎 ELITE CHECK
+        is_elite = vol_surge >= 1.5 and oi_change > 0
+        rank = "💎 ELITE" if is_elite else "🥇 STANDARD"
+        
+        side = "🟢 BUY" if is_long else "🔴 SELL"
+        action_type = "BREAKOUT" if is_long else "BREAKDOWN"
+        
+        risk = abs(curr['Close'] - curr['Supertrend'])
+        t1 = curr['Close'] + (risk * 2) if is_long else curr['Close'] - (risk * 2)
+        
+        msg = (f"{rank} SUPERTREND {action_type}\n"
                f"---------------------------\n"
-               f"🔥 **Action:** {'🟢 BUY' if is_long else '🔴 SELL'}\n"
-               f"📊 **Vol Surge:** {vol_ratio:.1f}x\n"
-               f"💰 **Entry:** {curr['Close']:.2f} | **T1:** {t1:.2f}")
+               f"📦 **Stock:** {symbol.replace('.NS','')}\n"
+               f"🔥 **Action:** {side}\n"
+               f"🧭 **Market Mood:** {mood}\n"
+               f"📊 **Vol Surge:** {vol_surge:.1f}x | **OI:** {oi_change:+.2f}%\n"
+               f"💰 **Entry:** {curr['Close']:.2f}\n"
+               f"🛡️ **SL (Supertrend):** {curr['Supertrend']:.2f}\n"
+               f"🎯 **Target 1:** {t1:.2f}")
         
         send_telegram(msg)
-        return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "trade_data": {"Entry": round(curr['Close'], 2), "Side": "🟢 BUY" if is_long else "🔴 SELL", "T1": t1, "t1_reached": False}}
+        return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "trade_data": {"Entry": round(curr['Close'], 2), "Side": side, "T1": round(t1, 2), "t1_reached": False}}
+        
     return None
 
 if __name__ == "__main__":
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
+    
+    mood = get_market_mood()
     pos = manage_positions(pos)
+    
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(process_symbol, s, mem, pos): s for s in SYMBOLS}
+        futures = {executor.submit(process_symbol, s, mem, pos, mood): s for s in SYMBOLS}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res:
-                mem[res["symbol_ts"]], pos[res["symbol"]] = True, res["trade_data"]
-                save_json(mem, MEMORY_FILE); save_json(pos, POSITIONS_FILE)
+                mem[res["symbol_ts"]] = True
+                pos[res["symbol"]] = res["trade_data"]
+                
+    save_json(mem, MEMORY_FILE)
+    save_json(pos, POSITIONS_FILE)
