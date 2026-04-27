@@ -8,20 +8,18 @@ import csv
 import logging
 from datetime import datetime
 import concurrent.futures
-from nsepython import nse_fno
 
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
 # --- CONFIGURATION ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_status_st.json"
-POSITIONS_FILE = "active_positions_st.json"
-TRADE_LOG = "supertrend_trade_summary.csv" 
+MEMORY_FILE = "alert_status_reversal.json"
+POSITIONS_FILE = "active_positions_reversal.json"
 
-# --- FULL APRIL 2026 F&O UNIVERSE (190+ SYMBOLS) ---
+# --- FULL APRIL 2026 F&O UNIVERSE ---
 SYMBOLS = [
-    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "360ONE.NS", "AARTIIND.NS", "ABB.NS", 
+    "^NSEI", "^NSEBANK", "FINNIFTY.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "360ONE.NS", "AARTIIND.NS", "ABB.NS", 
     "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENSOL.NS", "ADANIENT.NS", "ADANIGREEN.NS", 
     "ADANIPORTS.NS", "ADANIPOWER.NS", "ALKEM.NS", "AMBER.NS", "AMBUJACEM.NS", "ANGELONE.NS", "APLAPOLLO.NS", 
     "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", "AUBANK.NS", 
@@ -75,98 +73,79 @@ def safe_fetch(symbol, period, interval):
         return df
     except: return None
 
-def get_oi_data(symbol):
-    try:
-        nse_symbol = symbol.replace(".NS", "")
-        data = nse_fno(nse_symbol)
-        stocks_list = data.get('stocks', [])
-        if not stocks_list: return 0.0
-        trade_info = stocks_list[0].get('marketDeptOrderBook', {}).get('tradeInfo', {})
-        curr_oi = float(trade_info.get('openInterest', 0))
-        prev_oi = float(trade_info.get('prevCloseOI', 0))
-        if prev_oi > 0:
-            return round(((curr_oi - prev_oi) / prev_oi) * 100, 2)
-        return 0.0
-    except: return 0.0
+def get_woodie_pivots(symbol):
+    df_d = safe_fetch(symbol, "2d", "1d")
+    if df_d is not None and len(df_d) >= 2:
+        prev = df_d.iloc[-2]
+        h, l, c = float(prev['High']), float(prev['Low']), float(prev['Close'])
+        pp = (h + l + 2 * c) / 4
+        return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "S1": (2*pp)-h, "S2": pp-(h-l)}
+    return None
 
-def calculate_supertrend(df, length=7, multiplier=2.0):
-    hl2 = (df['High'] + df['Low']) / 2
-    df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
-    df['ATR'] = df['TR'].rolling(window=length).mean()
-    df['Basic_UB'] = hl2 + (multiplier * df['ATR'])
-    df['Basic_LB'] = hl2 - (multiplier * df['ATR'])
-    df['Final_UB'], df['Final_LB'] = 0.0, 0.0
-    for i in range(length, len(df)):
-        df.loc[df.index[i], 'Final_UB'] = df['Basic_UB'].iloc[i] if df['Basic_UB'].iloc[i] < df['Final_UB'].iloc[i-1] or df['Close'].iloc[i-1] > df['Final_UB'].iloc[i-1] else df['Final_UB'].iloc[i-1]
-        df.loc[df.index[i], 'Final_LB'] = df['Basic_LB'].iloc[i] if df['Basic_LB'].iloc[i] > df['Final_LB'].iloc[i-1] or df['Close'].iloc[i-1] < df['Final_LB'].iloc[i-1] else df['Final_LB'].iloc[i-1]
-    df['Supertrend'] = 0.0
-    for i in range(length, len(df)):
-        if df['Supertrend'].iloc[i-1] == df['Final_UB'].iloc[i-1] and df['Close'].iloc[i] <= df['Final_UB'].iloc[i]:
-            df.loc[df.index[i], 'Supertrend'] = df['Final_UB'].iloc[i]
-        elif df['Supertrend'].iloc[i-1] == df['Final_UB'].iloc[i-1] and df['Close'].iloc[i] > df['Final_UB'].iloc[i]:
-            df.loc[df.index[i], 'Supertrend'] = df['Final_LB'].iloc[i]
-        elif df['Supertrend'].iloc[i-1] == df['Final_LB'].iloc[i-1] and df['Close'].iloc[i] >= df['Final_LB'].iloc[i]:
-            df.loc[df.index[i], 'Supertrend'] = df['Final_LB'].iloc[i]
-        else:
-            df.loc[df.index[i], 'Supertrend'] = df['Final_UB'].iloc[i]
-    return df['Supertrend']
+def is_near_level(price, levels, threshold=0.0015):
+    for name, val in levels.items():
+        if abs(price - val) / val <= threshold:
+            return name
+    return None
 
-def get_market_mood():
-    df = safe_fetch("^NSEI", "1mo", "1h")
-    if df is None: return "⚪ NEUTRAL"
-    df['EMA9'] = df['Close'].ewm(span=9).mean()
-    return "🟢 BULLISH" if df['Close'].iloc[-1] > df['EMA9'].iloc[-1] else "🔴 BEARISH"
+def is_pa(candle):
+    open_p, close_p = float(candle['Open']), float(candle['Close'])
+    high_p, low_p = float(candle['High']), float(candle['Low'])
+    body = abs(open_p - close_p)
+    lower_wick = min(open_p, close_p) - low_p
+    upper_wick = high_p - max(open_p, close_p)
+    return (lower_wick > body * 1.5), (upper_wick > body * 1.5)
 
-def process_symbol(symbol, memory, positions, mood):
-    if symbol in ["^NSEI", "^NSEBANK"]: return None
-    df_15m = safe_fetch(symbol, "5d", "15m")
-    if df_15m is None or len(df_15m) < 21: return None
+def process_symbol(symbol, memory, positions):
+    # 1. Fetch Data
+    df_1h = safe_fetch(symbol, "5d", "1h")
+    df_15m = safe_fetch(symbol, "2d", "15m")
+    pivots = get_woodie_pivots(symbol)
     
-    df_15m['EMA20'] = df_15m['Close'].ewm(span=20, adjust=False).mean()
-    df_15m['Supertrend'] = calculate_supertrend(df_15m)
-    
-    curr, prev = df_15m.iloc[-1], df_15m.iloc[-2]
-    ts = str(df_15m.index[-1])
-    
-    avg_vol = df_15m['Volume'].iloc[-20:-1].mean() + 1e-9
-    vol_surge = curr['Volume'] / avg_vol
-    oi_pct = get_oi_data(symbol)
+    if df_1h is None or df_15m is None or pivots is None: return None
 
-    # 15m Chartink Translation
-    is_long = (curr['Close'] > curr['EMA20']) and (curr['Close'] > curr['Supertrend']) and \
-              (prev['Close'] <= prev['Supertrend']) and (curr['Volume'] > 100000) and (mood != "🔴 BEARISH")
-              
-    is_short = (curr['Close'] < curr['EMA20']) and (curr['Close'] < curr['Supertrend']) and \
-               (prev['Close'] >= prev['Supertrend']) and (curr['Close'] < curr['Open']) and (mood != "🟢 BULLISH")
+    # 2. Analyze Current 1H Anchor
+    curr_h = df_1h.iloc[-1]
+    is_h_hammer, is_h_star = is_pa(curr_h)
+    
+    # 3. Analyze 15m Intrabar Trigger
+    m15_curr = df_15m.iloc[-1]
+    m15_prev = df_15m.iloc[-2]
+    ts_15m = str(df_15m.index[-1])
+    
+    # Proximity Check (Low for S/PP, High for R/PP)
+    level_buy = is_near_level(float(m15_curr['Low']), {k: pivots[k] for k in ["S1", "S2", "PP"]})
+    level_sell = is_near_level(float(m15_curr['High']), {k: pivots[k] for k in ["R1", "R2", "PP"]})
 
-    if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
-        rank = "💎 ELITE" if (vol_surge >= 1.5 and abs(oi_pct) >= 2.0) else "🥇 STANDARD"
-        side = "🟢 BUY" if is_long else "🔴 SELL"
-        risk = abs(curr['Close'] - curr['Supertrend'])
-        t1 = curr['Close'] + (risk * 2) if is_long else curr['Close'] - (risk * 2)
+    # Trigger logic: 1H Structure + 15m V-Flip Confirmation + Pivot Proximity
+    is_long = is_h_hammer and (m15_curr['Close'] > m15_prev['High']) and level_buy
+    is_short = is_h_star and (m15_curr['Close'] < m15_prev['Low']) and level_sell
+
+    if (is_long or is_short) and f"{symbol}_{ts_15m}" not in memory and symbol not in positions:
+        side = "🟢 BULLISH REVERSAL" if is_long else "🔴 BEARISH REVERSAL"
+        level_name = level_buy if is_long else level_sell
         
-        msg = (f"{rank} SUPERTREND BREAKOUT\n"
+        msg = (f"🎯 **1H/15m HYBRID REVERSAL**\n"
                f"---------------------------\n"
                f"📦 **Stock:** {symbol.replace('.NS','')}\n"
+               f"📍 **Level:** {level_name} ({pivots[level_name]:.2f})\n"
                f"🔥 **Action:** {side}\n"
-               f"📊 **Vol Surge:** {vol_surge:.1f}x | **OI Change:** {oi_pct:+.2f}%\n"
-               f"💰 **Entry:** {curr['Close']:.2f}\n"
-               f"🎯 **Target 1:** {t1:.2f}\n"
-               f"🛡️ **SL:** {curr['Supertrend']:.2f}")
+               f"💰 **Entry:** {float(m15_curr['Close']):.2f}\n"
+               f"🛡️ **SL:** {float(m15_curr['Low'] if is_long else m15_curr['High']):.2f}\n"
+               f"🕒 **Alert Time:** {ts_15m}")
         
-        send_telegram(msg)
-        return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "data": {"Entry": round(curr['Close'], 2), "Side": side, "T1": round(t1, 2), "t1_reached": False}}
+        return {"msg": msg, "symbol_ts": f"{symbol}_{ts_15m}", "symbol": symbol, "data": {"Entry": round(float(m15_curr['Close']), 2), "Side": side}}
     return None
 
 if __name__ == "__main__":
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
-    mood = get_market_mood()
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(process_symbol, s, mem, pos, mood): s for s in SYMBOLS}
+        futures = {executor.submit(process_symbol, s, mem, pos): s for s in SYMBOLS}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res:
+                send_telegram(res["msg"])
                 mem[res["symbol_ts"]] = True
                 pos[res["symbol"]] = res["data"]
                 
