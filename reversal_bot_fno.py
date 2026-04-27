@@ -15,13 +15,13 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 # --- CONFIGURATION ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_status_scalp.json"
-POSITIONS_FILE = "active_positions_scalp.json"
-TRADE_LOG = "weekly_trade_summary.csv" 
+MEMORY_FILE = "alert_status_st.json"
+POSITIONS_FILE = "active_positions_st.json"
+TRADE_LOG = "supertrend_trade_summary.csv" 
 
-# --- FULL APRIL 2026 F&O UNIVERSE ---
+# --- FULL APRIL 2026 F&O UNIVERSE (190+ SYMBOLS) ---
 SYMBOLS = [
-    "^NSEI", "^NSEBANK", "FINNIFTY.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "360ONE.NS", "AARTIIND.NS", "ABB.NS", 
+    "^NSEI", "^NSEBANK", "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "360ONE.NS", "AARTIIND.NS", "ABB.NS", 
     "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENSOL.NS", "ADANIENT.NS", "ADANIGREEN.NS", 
     "ADANIPORTS.NS", "ADANIPOWER.NS", "ALKEM.NS", "AMBER.NS", "AMBUJACEM.NS", "ANGELONE.NS", "APLAPOLLO.NS", 
     "APOLLOHOSP.NS", "APOLLOTYRE.NS", "ASHOKLEY.NS", "ASIANPAINT.NS", "ASTRAL.NS", "ATUL.NS", "AUBANK.NS", 
@@ -64,11 +64,12 @@ def save_json(data, filename):
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+    try: requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+    except: pass
 
 def safe_fetch(symbol, period, interval):
     try:
-        df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False)
+        df = yf.download(symbol, period=period, interval=interval, progress=False)
         if df is None or df.empty: return None
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         return df
@@ -76,133 +77,98 @@ def safe_fetch(symbol, period, interval):
 
 def get_oi_data(symbol):
     try:
-        # Fetching F&O data using nse_fno
-        data = nse_fno(symbol.replace(".NS", ""))
-        trade_info = data.get('stocks', [{}])[0].get('marketDeptOrderBook', {}).get('tradeInfo', {})
-        curr_oi = trade_info.get('openInterest', 0)
-        
-        # Fallback to prevent crash if NSE blocks the request or changes format
-        if curr_oi == 0:
-            return 0.0
-            
-        # Using a mock positive buildup proxy if data succeeds to pass the score check smoothly
-        # Ideally, prev_oi is fetched dynamically if available in the API response
-        return 1.5 
-    except Exception as e: 
+        nse_symbol = symbol.replace(".NS", "")
+        data = nse_fno(nse_symbol)
+        stocks_list = data.get('stocks', [])
+        if not stocks_list: return 0.0
+        trade_info = stocks_list[0].get('marketDeptOrderBook', {}).get('tradeInfo', {})
+        curr_oi = float(trade_info.get('openInterest', 0))
+        prev_oi = float(trade_info.get('prevCloseOI', 0))
+        if prev_oi > 0:
+            return round(((curr_oi - prev_oi) / prev_oi) * 100, 2)
         return 0.0
+    except: return 0.0
 
-def analyze_1h_context(df_1h):
-    df_1h['EMA9'] = df_1h['Close'].ewm(span=9).mean()
-    rh, rl = df_1h['High'].rolling(40).max(), df_1h['Low'].rolling(40).min()
-    df_1h['Fib_618'] = rh - (0.618 * (rh - rl))
-    curr = df_1h.iloc[-1]
-    trend = "🟢 BULLISH" if curr['Close'] > curr['EMA9'] else "🔴 BEARISH"
-    return trend, curr['Fib_618'], curr['EMA9']
+def calculate_supertrend(df, length=7, multiplier=2.0):
+    hl2 = (df['High'] + df['Low']) / 2
+    df['TR'] = np.maximum(df['High'] - df['Low'], np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
+    df['ATR'] = df['TR'].rolling(window=length).mean()
+    df['Basic_UB'] = hl2 + (multiplier * df['ATR'])
+    df['Basic_LB'] = hl2 - (multiplier * df['ATR'])
+    df['Final_UB'], df['Final_LB'] = 0.0, 0.0
+    for i in range(length, len(df)):
+        df.loc[df.index[i], 'Final_UB'] = df['Basic_UB'].iloc[i] if df['Basic_UB'].iloc[i] < df['Final_UB'].iloc[i-1] or df['Close'].iloc[i-1] > df['Final_UB'].iloc[i-1] else df['Final_UB'].iloc[i-1]
+        df.loc[df.index[i], 'Final_LB'] = df['Basic_LB'].iloc[i] if df['Basic_LB'].iloc[i] > df['Final_LB'].iloc[i-1] or df['Close'].iloc[i-1] < df['Final_LB'].iloc[i-1] else df['Final_LB'].iloc[i-1]
+    df['Supertrend'] = 0.0
+    for i in range(length, len(df)):
+        if df['Supertrend'].iloc[i-1] == df['Final_UB'].iloc[i-1] and df['Close'].iloc[i] <= df['Final_UB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_UB'].iloc[i]
+        elif df['Supertrend'].iloc[i-1] == df['Final_UB'].iloc[i-1] and df['Close'].iloc[i] > df['Final_UB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_LB'].iloc[i]
+        elif df['Supertrend'].iloc[i-1] == df['Final_LB'].iloc[i-1] and df['Close'].iloc[i] >= df['Final_LB'].iloc[i]:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_LB'].iloc[i]
+        else:
+            df.loc[df.index[i], 'Supertrend'] = df['Final_UB'].iloc[i]
+    return df['Supertrend']
 
-def manage_positions(positions):
-    updated = positions.copy()
-    for symbol, trade in positions.items():
-        df_15m = safe_fetch(symbol, period="1d", interval="15m")
-        if df_15m is None: continue
-        
-        df_15m['EMA9'] = df_15m['Close'].ewm(span=9).mean()
-        curr_price = float(df_15m['Close'].iloc[-1])
-        ema_val = float(df_15m['EMA9'].iloc[-1])
-        
-        if not trade.get('t1_reached', False):
-            is_t1 = (trade['Side'] == "🟢 BUY" and curr_price >= trade['T1']) or \
-                    (trade['Side'] == "🔴 SELL" and curr_price <= trade['T1'])
-            if is_t1:
-                send_telegram(f"🎯 **TARGET 1 REACHED: {symbol.replace('.NS','')}**\nAction: SL moved to Cost. Riding 15m Trend 🚀")
-                updated[symbol]['t1_reached'] = True
+def get_market_mood():
+    df = safe_fetch("^NSEI", "1mo", "1h")
+    if df is None: return "⚪ NEUTRAL"
+    df['EMA9'] = df['Close'].ewm(span=9).mean()
+    return "🟢 BULLISH" if df['Close'].iloc[-1] > df['EMA9'].iloc[-1] else "🔴 BEARISH"
 
-        exit_sig = (trade['Side'] == "🟢 BUY" and curr_price < ema_val) or \
-                   (trade['Side'] == "🔴 SELL" and curr_price > ema_val)
-        
-        if exit_sig:
-            pts = round(curr_price - trade['Entry'] if trade['Side'] == "🟢 BUY" else trade['Entry'] - curr_price, 2)
-            pct = round((pts / trade['Entry']) * 100, 2)
-            
-            with open(TRADE_LOG, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([datetime.now().strftime('%Y-%m-%d %H:%M'), symbol, trade['Side'], trade['Entry'], curr_price, pts, pct])
-            
-            send_telegram(f"🏁 **TREND EXIT: {symbol.replace('.NS','')}**\nFinal Pts: {pts:+.2f} ({pct:+.2f}%)")
-            del updated[symbol] 
-            
-    return updated
-
-def process_symbol(symbol, memory, positions):
-    df_1h = safe_fetch(symbol, "1mo", "1h")
+def process_symbol(symbol, memory, positions, mood):
+    if symbol in ["^NSEI", "^NSEBANK"]: return None
     df_15m = safe_fetch(symbol, "5d", "15m")
-    if df_1h is None or df_15m is None: return None
-
-    macro_trend, fib_618, ema9_1h = analyze_1h_context(df_1h)
+    if df_15m is None or len(df_15m) < 21: return None
     
-    df_15m['EMA9'] = df_15m['Close'].ewm(span=9).mean()
-    delta = df_15m['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    df_15m['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
+    df_15m['EMA20'] = df_15m['Close'].ewm(span=20, adjust=False).mean()
+    df_15m['Supertrend'] = calculate_supertrend(df_15m)
     
     curr, prev = df_15m.iloc[-1], df_15m.iloc[-2]
     ts = str(df_15m.index[-1])
     
-    b = abs(curr['Open'] - curr['Close'])
-    is_hammer = (min(curr['Open'], curr['Close']) - curr['Low']) > b * 1.5
-    is_star = (curr['High'] - max(curr['Open'], curr['Close'])) > b * 1.5
-    is_vflip_bull = (curr['Close'] > prev['High']) and (curr['Low'] < curr['EMA9']) and (curr['Close'] > curr['EMA9'])
-    is_vflip_bear = (curr['Close'] < prev['Low']) and (curr['High'] > curr['EMA9']) and (curr['Close'] < curr['EMA9'])
+    avg_vol = df_15m['Volume'].iloc[-20:-1].mean() + 1e-9
+    vol_surge = curr['Volume'] / avg_vol
+    oi_pct = get_oi_data(symbol)
 
-    vol_surge = float(curr['Volume']) / (df_15m['Volume'].iloc[-5:-1].mean() + 1e-9)
-    oi_change = get_oi_data(symbol)
-
-    is_long = macro_trend == "🟢 BULLISH" and (is_hammer or is_vflip_bull) and (curr['Close'] > prev['High'])
-    is_short = macro_trend == "🔴 BEARISH" and (is_star or is_vflip_bear) and (curr['Close'] < prev['Low'])
+    # 15m Chartink Translation
+    is_long = (curr['Close'] > curr['EMA20']) and (curr['Close'] > curr['Supertrend']) and \
+              (prev['Close'] <= prev['Supertrend']) and (curr['Volume'] > 100000) and (mood != "🔴 BEARISH")
+              
+    is_short = (curr['Close'] < curr['EMA20']) and (curr['Close'] < curr['Supertrend']) and \
+               (prev['Close'] >= prev['Supertrend']) and (curr['Close'] < curr['Open']) and (mood != "🟢 BULLISH")
 
     if (is_long or is_short) and f"{symbol}_{ts}" not in memory and symbol not in positions:
-        
-        score = 20 
-        if vol_surge > 1.5: score += 25
-        if (is_long and oi_change > 1.0) or (is_short and oi_change > 1.0): score += 30
-        if (is_long and curr['RSI'] < 40) or (is_short and curr['RSI'] > 60): score += 15
-        if abs(curr['Close'] - fib_618) / fib_618 < 0.005: score += 10
-        
-        if score < 60: return None
-        
-        rank = "💎 ELITE" if score >= 85 else "🥇 HIGH"
+        rank = "💎 ELITE" if (vol_surge >= 1.5 and abs(oi_pct) >= 2.0) else "🥇 STANDARD"
         side = "🟢 BUY" if is_long else "🔴 SELL"
-        pattern = "🔨 Hammer" if is_hammer else ("🌟 Star" if is_star else "🔄 V-Flip")
+        risk = abs(curr['Close'] - curr['Supertrend'])
+        t1 = curr['Close'] + (risk * 2) if is_long else curr['Close'] - (risk * 2)
         
-        risk = abs(curr['Close'] - (curr['Low'] if is_long else curr['High']))
-        t1 = curr['Close'] + (risk * 2.5) if is_long else curr['Close'] - (risk * 2.5)
-        
-        msg = (f"{rank} SNIPER ({score}/100)\n"
+        msg = (f"{rank} SUPERTREND BREAKOUT\n"
                f"---------------------------\n"
                f"📦 **Stock:** {symbol.replace('.NS','')}\n"
-               f"🔥 **Action:** {side} ({pattern})\n"
-               f"🧭 **1H Trend:** {macro_trend}\n"
-               f"📊 **Vol Surge:** {vol_surge:.1f}x | **OI:** {oi_change:+.2f}%\n"
+               f"🔥 **Action:** {side}\n"
+               f"📊 **Vol Surge:** {vol_surge:.1f}x | **OI Change:** {oi_pct:+.2f}%\n"
                f"💰 **Entry:** {curr['Close']:.2f}\n"
                f"🎯 **Target 1:** {t1:.2f}\n"
-               f"🛡️ **Trail:** 15m 9 EMA")
+               f"🛡️ **SL:** {curr['Supertrend']:.2f}")
         
         send_telegram(msg)
-        return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "trade_data": {"Entry": round(curr['Close'], 2), "Side": side, "T1": t1, "t1_reached": False}}
+        return {"symbol_ts": f"{symbol}_{ts}", "symbol": symbol, "data": {"Entry": round(curr['Close'], 2), "Side": side, "T1": round(t1, 2), "t1_reached": False}}
     return None
 
 if __name__ == "__main__":
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
-    
-    pos = manage_positions(pos)
+    mood = get_market_mood()
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(process_symbol, s, mem, pos): s for s in SYMBOLS}
+        futures = {executor.submit(process_symbol, s, mem, pos, mood): s for s in SYMBOLS}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res:
                 mem[res["symbol_ts"]] = True
-                pos[res["symbol"]] = res["trade_data"]
+                pos[res["symbol"]] = res["data"]
                 
     save_json(mem, MEMORY_FILE)
     save_json(pos, POSITIONS_FILE)
