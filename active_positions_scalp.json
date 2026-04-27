@@ -1,1 +1,26 @@
-{}
+{
+    "ABFRL.NS": {
+        "Entry": 64.0,
+        "Side": "\ud83d\udfe2 BUY",
+        "T1": 64.45000076293945,
+        "t1_reached": false
+    },
+    "AMBER.NS": {
+        "Entry": 8113.0,
+        "Side": "\ud83d\udfe2 BUY",
+        "T1": 8168.0,
+        "t1_reached": false
+    },
+    "CONCOR.NS": {
+        "Entry": 515.3,
+        "Side": "\ud83d\udfe2 BUY",
+        "T1": 521.0499572753906,
+        "t1_reached": false
+    },
+    "HEROMOTOCO.NS": {
+        "Entry": 5054.0,
+        "Side": "\ud83d\udfe2 BUY",
+        "T1": 5102.75,
+        "t1_reached": false
+    }
+}
