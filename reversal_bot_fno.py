@@ -97,49 +97,67 @@ def is_pa(candle):
     return (lower_wick > body * 1.5), (upper_wick > body * 1.5)
 
 def process_symbol(symbol, memory, positions):
-    # 1. Fetch Data
     df_1h = safe_fetch(symbol, "5d", "1h")
     df_15m = safe_fetch(symbol, "2d", "15m")
     pivots = get_woodie_pivots(symbol)
     
     if df_1h is None or df_15m is None or pivots is None: return None
 
-    # 2. Analyze Current 1H Anchor
+    # 1. 1H Anchor Analysis
     curr_h = df_1h.iloc[-1]
     is_h_hammer, is_h_star = is_pa(curr_h)
     
-    # 3. Analyze 15m Intrabar Trigger
+    # 2. 15m Trigger Analysis
     m15_curr = df_15m.iloc[-1]
     m15_prev = df_15m.iloc[-2]
     ts_15m = str(df_15m.index[-1])
     
-    # Proximity Check (Low for S/PP, High for R/PP)
+    # 🕵️ VOLUME FILTER (Cut Noise)
+    avg_vol = df_15m['Volume'].iloc[-11:-1].mean() + 1e-9
+    vol_surge = m15_curr['Volume'] / avg_vol
+    if vol_surge < 1.2: return None 
+
+    # Proximity Check
     level_buy = is_near_level(float(m15_curr['Low']), {k: pivots[k] for k in ["S1", "S2", "PP"]})
     level_sell = is_near_level(float(m15_curr['High']), {k: pivots[k] for k in ["R1", "R2", "PP"]})
 
-    # Trigger logic: 1H Structure + 15m V-Flip Confirmation + Pivot Proximity
+    # Confirmation Logic
     is_long = is_h_hammer and (m15_curr['Close'] > m15_prev['High']) and level_buy
     is_short = is_h_star and (m15_curr['Close'] < m15_prev['Low']) and level_sell
 
     if (is_long or is_short) and f"{symbol}_{ts_15m}" not in memory and symbol not in positions:
+        
+        # 💎 ELITE CLASSIFICATION: High Volume (>1.7x) + Major Levels (S1/R1/PP)
+        is_major_level = (level_buy in ["S1", "PP"]) or (level_sell in ["R1", "PP"])
+        rank = "💎 ELITE" if (vol_surge >= 1.7 and is_major_level) else "🥇 STANDARD"
+        
         side = "🟢 BULLISH REVERSAL" if is_long else "🔴 BEARISH REVERSAL"
         level_name = level_buy if is_long else level_sell
         
-        msg = (f"🎯 **1H/15m HYBRID REVERSAL**\n"
+        # 🎯 MULTI-TARGET CALCULATION
+        entry = float(m15_curr['Close'])
+        stop_loss = float(m15_curr['Low'] if is_long else m15_curr['High'])
+        risk = abs(entry - stop_loss)
+        t1 = entry + (risk * 2) if is_long else entry - (risk * 2)
+        t2 = entry + (risk * 3) if is_long else entry - (risk * 3)
+        
+        msg = (f"{rank} REVERSAL AT {level_name}\n"
                f"---------------------------\n"
                f"📦 **Stock:** {symbol.replace('.NS','')}\n"
                f"📍 **Level:** {level_name} ({pivots[level_name]:.2f})\n"
                f"🔥 **Action:** {side}\n"
-               f"💰 **Entry:** {float(m15_curr['Close']):.2f}\n"
-               f"🛡️ **SL:** {float(m15_curr['Low'] if is_long else m15_curr['High']):.2f}\n"
+               f"📊 **Vol Surge:** {vol_surge:.1f}x\n"
+               f"💰 **Entry:** {entry:.2f}\n"
+               f"🛡️ **SL:** {stop_loss:.2f}\n"
+               f"🎯 **Target 1 (1:2):** {t1:.2f}\n"
+               f"🎯 **Target 2 (1:3):** {t2:.2f}\n"
                f"🕒 **Alert Time:** {ts_15m}")
         
-        return {"msg": msg, "symbol_ts": f"{symbol}_{ts_15m}", "symbol": symbol, "data": {"Entry": round(float(m15_curr['Close']), 2), "Side": side}}
+        return {"msg": msg, "symbol_ts": f"{symbol}_{ts_15m}", "symbol": symbol, "data": {"Entry": round(entry, 2), "Side": side}}
     return None
 
 if __name__ == "__main__":
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
-    
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(process_symbol, s, mem, pos): s for s in SYMBOLS}
         for future in concurrent.futures.as_completed(futures):
@@ -148,6 +166,5 @@ if __name__ == "__main__":
                 send_telegram(res["msg"])
                 mem[res["symbol_ts"]] = True
                 pos[res["symbol"]] = res["data"]
-                
     save_json(mem, MEMORY_FILE)
     save_json(pos, POSITIONS_FILE)
