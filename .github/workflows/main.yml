@@ -2,7 +2,7 @@ name: 1H-15m Hybrid Sniper Engine
 
 on:
   schedule:
-    # Runs every 5 minutes from 9:10 AM to 3:35 PM IST
+    # Runs every 5 minutes from 9:10 AM to 3:35 PM IST (3:40 UTC to 10:05 UTC)
     - cron: '*/5 3-10 * * 1-5'
   workflow_dispatch: 
 
@@ -15,8 +15,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -37,6 +35,7 @@ jobs:
         run: |
           git config --global user.name "SniperBot"
           git config --global user.email "sniper@trading.com"
-          git add alert_status_reversal.json active_positions_reversal.json
-          git commit -m "Sync Active Positions [skip ci]" || echo "No changes"
+          touch alert_status_reversal.json active_positions_reversal.json trade_performance_log.csv
+          git add alert_status_reversal.json active_positions_reversal.json trade_performance_log.csv
+          git commit -m "Sync Trade Data & Profit Logs [skip ci]" || echo "No changes"
           git push origin main || echo "No changes to push"
