@@ -2,12 +2,17 @@ name: 1H-15m Hybrid Sniper Engine
 
 on:
   schedule:
-    # Runs every 5 minutes from 9:10 AM to 3:35 PM IST (3:40 UTC to 10:05 UTC)
+    # 1. Market Hours: Runs every 5 minutes (Mon-Fri, 9:10 AM - 3:40 PM IST)
     - cron: '*/5 3-10 * * 1-5'
-  workflow_dispatch: 
+    
+    # 2. Weekly Report: Runs every Friday at 4:30 PM IST (11:00 AM UTC)
+    - cron: '0 11 * * 5'
+  
+  workflow_dispatch: # Allows manual trigger anytime
 
 jobs:
-  sniper_reversal:
+  # JOB 1: THE TRADING ENGINE
+  market_scanner:
     runs-on: ubuntu-latest
     permissions:
       contents: write 
@@ -30,12 +35,38 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python reversal_bot_fno.py
 
-      - name: Sync Trade Data
+      - name: Sync Trade & Performance Logs
         if: always() 
         run: |
           git config --global user.name "SniperBot"
           git config --global user.email "sniper@trading.com"
+          # Ensure all necessary files exist to prevent git errors
           touch alert_status_reversal.json active_positions_reversal.json trade_performance_log.csv
           git add alert_status_reversal.json active_positions_reversal.json trade_performance_log.csv
-          git commit -m "Sync Trade Data & Profit Logs [skip ci]" || echo "No changes"
+          git commit -m "📊 Sync Market Data [skip ci]" || echo "No changes to sync"
           git push origin main || echo "No changes to push"
+
+  # JOB 2: WEEKLY PERFORMANCE AUDIT
+  weekly_audit:
+    # Only runs on Fridays or during manual trigger
+    if: github.event.schedule == '0 11 * * 5' || github.event_name == 'workflow_dispatch'
+    needs: market_scanner # Ensures latest Friday trades are logged first
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install pandas requests pytz
+
+      - name: Generate Weekly Report
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python weekly_summary.py
