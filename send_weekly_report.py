@@ -1,74 +1,115 @@
-import smtplib, os, pandas as pd
+import smtplib, os, pandas as pd, json, yfinance as yf
 from email.message import EmailMessage
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
+
+# --- CONFIG ---
+IST = pytz.timezone('Asia/Kolkata')
+LOG_FILE = "trade_performance_log.csv"
+POSITIONS_FILE = "active_positions_reversal.json"
+
+def get_live_price(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1d", interval="1m")
+        return df['Close'].iloc[-1] if not df.empty else None
+    except: return None
 
 def send_weekly_summary():
     EMAIL_USER = os.getenv('EMAIL_USER')
     EMAIL_PASS = os.getenv('EMAIL_PASS')
+    EMAIL_RECEIVER = os.getenv('EMAIL_RECEIVER') or EMAIL_USER
     
-    # Process Realized
+    # 1. Process Realized Trades (From CSV)
     closed_html = "<p>No trades closed this week.</p>"
     realized_pts = 0
-    if os.path.exists("weekly_trade_summary.csv") and os.path.getsize("weekly_trade_summary.csv") > 0:
-        df_c = pd.read_csv("weekly_trade_summary.csv")
-        realized_pts = df_c['Points'].sum()
-        closed_html = df_c.to_html(index=False, border=0, classes='table')
+    if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 0:
+        df_c = pd.read_csv(LOG_FILE)
+        df_c['Date'] = pd.to_datetime(df_c['Date'])
+        # Filter for last 7 days
+        last_week = datetime.now() - timedelta(days=7)
+        week_df = df_c[df_c['Date'] >= last_week]
+        
+        if not week_df.empty:
+            realized_pts = week_df['Points'].sum()
+            closed_html = week_df.to_html(index=False, border=0, classes='table')
 
-    # Process Open
+    # 2. Process Open Positions (From JSON + Live MTM)
     open_html = "<p>No active positions at close.</p>"
     unrealized_pts = 0
-    if os.path.exists("open_positions_snapshot.csv") and os.path.getsize("open_positions_snapshot.csv") > 0:
-        df_o = pd.read_csv("open_positions_snapshot.csv")
-        unrealized_pts = df_o['MTM_Pts'].sum()
-        open_html = df_o.to_html(index=False, border=0, classes='table')
+    if os.path.exists(POSITIONS_FILE):
+        with open(POSITIONS_FILE, 'r') as f:
+            open_data = json.load(f)
+        
+        open_rows = []
+        for s, d in open_data.items():
+            cp = get_live_price(s)
+            if cp:
+                mtm = round(cp - d['Entry'], 2) if d['Side'] == "BUY" else round(d['Entry'] - cp, 2)
+                unrealized_pts += mtm
+                open_rows.append({
+                    "Symbol": s.replace('.NS',''),
+                    "Side": d['Side'],
+                    "Entry": d['Entry'],
+                    "LTP": round(cp, 2),
+                    "MTM_Pts": mtm,
+                    "Rank": d['Rank']
+                })
+        
+        if open_rows:
+            df_o = pd.DataFrame(open_rows)
+            open_html = df_o.to_html(index=False, border=0, classes='table')
 
+    # 3. Create Email
     msg = EmailMessage()
-    msg['Subject'] = f"🚀 F&O Weekly Summary: {realized_pts + unrealized_pts:+.2f} Total Points"
+    total_delta = realized_pts + unrealized_pts
+    msg['Subject'] = f"🚀 Sniper Report: {total_delta:+.2f} Total Points"
     msg['From'] = EMAIL_USER
-    msg['To'] = EMAIL_USER
+    msg['To'] = EMAIL_RECEIVER
     
     html_content = f"""
     <html>
     <head>
         <style>
-            .table {{ font-family: Arial; border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 20px; }}
-            .table td, .table th {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-            .table th {{ background-color: #2c3e50; color: white; }}
-            .box {{ background-color: #f4f7f6; padding: 15px; border-left: 5px solid #2980b9; margin-bottom: 20px; }}
+            .table {{ font-family: Arial, sans-serif; border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 20px; }}
+            .table td, .table th {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
+            .table th {{ background-color: #1a2a3a; color: white; text-transform: uppercase; }}
+            .box {{ background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 6px solid #2980b9; margin-bottom: 25px; font-family: sans-serif; }}
             .pos {{ color: #27ae60; font-weight: bold; }}
             .neg {{ color: #e74c3c; font-weight: bold; }}
+            h2 {{ color: #2c3e50; font-family: sans-serif; }}
         </style>
     </head>
     <body>
-        <h2>Weekly Trading Performance Review</h2>
+        <h2>Weekly Performance Review (1H/15m Hybrid)</h2>
         <div class="box">
-            <b>Realized Points:</b> <span class="{'pos' if realized_pts >= 0 else 'neg'}">{realized_pts:+.2f}</span><br>
-            <b>Open MTM Points:</b> <span class="{'pos' if unrealized_pts >= 0 else 'neg'}">{unrealized_pts:+.2f}</span><br>
-            <hr>
-            <b>Net Portfolio Delta:</b> {realized_pts + unrealized_pts:+.2f} Points
+            <span style="font-size: 16px;"><b>Net Weekly Delta:</b> <span class="{'pos' if total_delta >= 0 else 'neg'}">{total_delta:+.2f} Points</span></span><br>
+            <hr style="border: 0; border-top: 1px solid #ccc;">
+            <b>Realized:</b> <span class="{'pos' if realized_pts >= 0 else 'neg'}">{realized_pts:+.2f}</span><br>
+            <b>Unrealized (MTM):</b> <span class="{'pos' if unrealized_pts >= 0 else 'neg'}">{unrealized_pts:+.2f}</span>
         </div>
-        <h4>📊 Closed Trades (Realized This Week)</h4>
+        <h4>📊 Closed Trades (Realized)</h4>
         {closed_html}
-        <h4>🕒 Open Positions (Mark-to-Market Snapshot)</h4>
+        <h4>🕒 Open Positions (Live MTM)</h4>
         {open_html}
+        <p style="font-size: 10px; color: grey;">Generated by GitHub Actions • {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} IST</p>
     </body>
     </html>
     """
     msg.add_alternative(html_content, subtype='html')
 
-    for f_name in ["weekly_trade_summary.csv", "open_positions_snapshot.csv"]:
-        if os.path.exists(f_name) and os.path.getsize(f_name) > 0:
-            with open(f_name, 'rb') as f:
-                msg.add_attachment(f.read(), maintype='application', subtype='octet-stream', filename=f_name)
+    # Attach CSV for deep auditing
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'rb') as f:
+            msg.add_attachment(f.read(), maintype='application', subtype='octet-stream', filename=LOG_FILE)
 
-    # Added try/except block for better error logging in GitHub Actions
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(EMAIL_USER, EMAIL_PASS)
             smtp.send_message(msg)
-        print(f"✅ Weekly report sent successfully. Net Delta: {realized_pts + unrealized_pts:+.2f} Points")
+        print(f"✅ Report sent. Total Delta: {total_delta:+.2f}")
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+        print(f"❌ Failed: {e}")
 
 if __name__ == "__main__":
     send_weekly_summary()
