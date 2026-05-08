@@ -8,14 +8,15 @@ import pytz
 from datetime import datetime
 import concurrent.futures
 
-# --- CONFIG ---
+# --- CONFIGURATION ---
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-MEMORY_FILE = "alert_status_reversal.json"
-POSITIONS_FILE = "active_positions_reversal.json"
+MEMORY_FILE = "alert_status_reversal.json"      # Prevents double alerts
+POSITIONS_FILE = "active_positions_reversal.json" # TRACKS OPEN TRADES
+LOG_FILE = "trade_performance_log.csv"          # PROFIT PASSBOOK
 IST = pytz.timezone('Asia/Kolkata')
 
-# --- FULL VERIFIED F&O UNIVERSE (MAY 2026) ---
+# --- FULL MAY 2026 F&O UNIVERSE (190+ SYMBOLS) ---
 SYMBOLS = [
     "^NSEI", "^NSEBANK", "FINNIFTY.NS", "MIDCPNIFTY.NS", "NIFTYNXT50.NS", "360ONE.NS", "AARTIIND.NS", "ABB.NS", 
     "ABBOTINDIA.NS", "ABCAPITAL.NS", "ABFRL.NS", "ACC.NS", "ADANIENSOL.NS", "ADANIENT.NS", "ADANIGREEN.NS", 
@@ -64,47 +65,10 @@ def safe_fetch(s, p, i):
         df = yf.download(s, period=p, interval=i, progress=False)
         if df is None or df.empty: return None
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        # --- 33 EMA CALCULATION ---
+        df['EMA33'] = df['Close'].ewm(span=33, adjust=False).mean()
         return df
     except: return None
-
-def manage_exits(positions):
-    updated = positions.copy()
-    for s, data in positions.items():
-        df = safe_fetch(s, "1d", "1m")
-        if df is None or df.empty: continue
-        cp = float(df['Close'].iloc[-1])
-        entry, target, sl, side = data['Entry'], data['Target'], data['SL'], data['Side']
-        rank = data.get('Rank', 'STANDARD')
-
-        # --- TRAILING STOP LOSS (JACKPOT ONLY) ---
-        if rank == "🔥 JACKPOT":
-            risk = abs(entry - sl)
-            if side == "BUY" and cp >= (entry + 2 * risk) and sl < entry:
-                data['SL'] = entry # Trail to Breakeven
-            elif side == "SELL" and cp <= (entry - 2 * risk) and sl > entry:
-                data['SL'] = entry
-
-        # --- EXIT CHECK ---
-        hit_t = (side == "BUY" and cp >= target) or (side == "SELL" and cp <= target)
-        hit_s = (side == "BUY" and cp <= sl) or (side == "SELL" and cp >= sl)
-        
-        if hit_t or hit_s:
-            status = "🎯 TARGET HIT" if hit_t else "🛑 STOP LOSS"
-            pts = round(cp - entry, 2) if side == "BUY" else round(entry - cp, 2)
-            send_telegram(f"{status}: {s.replace('.NS','')}\nExit: {cp:.2f}\nPoints: {pts:+.2f}\nRank: {rank}")
-            # Logging to CSV
-            with open('trade_performance_log.csv', 'a') as log:
-                log.write(f"{datetime.now(IST)},{s},{side},{rank},{entry},{cp},{pts}\n")
-            del updated[s]
-        else:
-            updated[s] = data
-    return updated
-
-def is_pa(candle):
-    """Detects Rejection Wicks with 1.2x logic"""
-    o, c, h, l = float(candle['Open']), float(candle['Close']), float(candle['High']), float(candle['Low'])
-    body = abs(o - c) + 1e-9
-    return ((min(o, c) - l) > body * 1.2), ((h - max(o, c)) > body * 1.2)
 
 def get_pivots(s):
     df = safe_fetch(s, "2d", "1d")
@@ -115,18 +79,68 @@ def get_pivots(s):
         return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "R3": pp+2*(h-l), "S1": (2*pp)-h, "S2": pp-(h-l), "S3": pp-2*(h-l)}
     return None
 
+def is_pa(candle):
+    """Detects Rejection Wicks with 1.2x body logic"""
+    o, c, h, l = float(candle['Open']), float(candle['Close']), float(candle['High']), float(candle['Low'])
+    body = abs(o - c) + 1e-9
+    return ((min(o, c) - l) > body * 1.2), ((h - max(o, c)) > body * 1.2)
+
+def manage_exits(positions):
+    """Monitors live positions and tracks Target/33 EMA Trailing SL."""
+    updated = positions.copy()
+    for s, data in positions.items():
+        df = safe_fetch(s, "1d", "1m")
+        if df is None or df.empty: continue
+        cp = float(df['Close'].iloc[-1])
+        ema33 = float(df['EMA33'].iloc[-1])
+        
+        entry, targets, sl, side = data['Entry'], data['Targets'], data['SL'], data['Side']
+        idx = data.get('T_Idx', 0)
+        rank = data.get('Rank', 'STANDARD')
+
+        # --- HYBRID TRAILING: Use 33 EMA after T1 is hit ---
+        if idx >= 1:
+            if side == "BUY":
+                sl = max(sl, ema33)
+            else:
+                sl = min(sl, ema33)
+
+        hit_t = (side == "BUY" and cp >= targets[idx]) or (side == "SELL" and cp <= targets[idx])
+        hit_s = (side == "BUY" and cp <= sl) or (side == "SELL" and cp >= sl)
+
+        if hit_t:
+            pts = round(cp - entry, 2) if side == "BUY" else round(entry - cp, 2)
+            if idx < 3: # T1, T2, T3
+                new_sl = entry if idx == 0 else targets[idx - 1]
+                send_telegram(f"🎯 TARGET {idx+1} HIT: {s.replace('.NS','')}\nExit: {cp:.2f}\n🛡️ SL Trailed (33 EMA Base): {new_sl:.2f}")
+                data['T_Idx'], data['SL'] = idx + 1, new_sl
+                updated[s] = data
+            else: # Final T4
+                send_telegram(f"🏁 FINAL TARGET 4 HIT: {s.replace('.NS','')}\nPoints: {pts:+.2f}")
+                with open(LOG_FILE, 'a') as f: 
+                    f.write(f"{datetime.now(IST)},{s},{side},{rank},{entry},{cp},{pts}\n")
+                del updated[s]
+        elif hit_s:
+            pts = round(cp - entry, 2) if side == "BUY" else round(entry - cp, 2)
+            status = "🔄 TSL HIT (33 EMA)" if idx > 0 else "🛑 SL HIT"
+            send_telegram(f"{status}: {s.replace('.NS','')}\nExit: {cp:.2f}\nNet Points: {pts:+.2f}")
+            with open(LOG_FILE, 'a') as f: 
+                f.write(f"{datetime.now(IST)},{s},{side},{rank},{entry},{cp},{pts}\n")
+            del updated[s]
+    return updated
+
 def process_symbol(s, memory, positions):
     df1h, df15m = safe_fetch(s, "5d", "1h"), safe_fetch(s, "2d", "15m")
     pivots = get_pivots(s)
     if df1h is None or df15m is None or pivots is None: return None
 
+    ema33 = float(df15m['EMA33'].iloc[-1])
     is_ham, is_star = is_pa(df1h.iloc[-1])
     m15, m15p = df15m.iloc[-1], df15m.iloc[-2]
     
     vol_surge = m15['Volume'] / (df15m['Volume'].iloc[-11:-1].mean() + 1e-9)
     if vol_surge < 1.2: return None
 
-    # Near Level Check (0.15% threshold)
     near_buy = next((k for k in ["S1", "S2", "S3", "PP"] if abs(m15['Low'] - pivots[k])/pivots[k] <= 0.0015), None)
     near_sell = next((k for k in ["R1", "R2", "R3", "PP"] if abs(m15['High'] - pivots[k])/pivots[k] <= 0.0015), None)
 
@@ -134,34 +148,30 @@ def process_symbol(s, memory, positions):
     is_s = (is_star and m15['Close'] < m15p['Low'] and near_sell)
 
     if (is_l or is_s) and str(df15m.index[-1]) not in memory and s not in positions:
-        level_hit = near_buy if is_l else near_sell
+        level, side = (near_buy if is_l else near_sell), ("BUY" if is_l else "SELL")
+        rank = "🔥 JACKPOT" if level in ["S2", "S3", "R2", "R3"] else "💎 ELITE"
+        trend_status = "📈 UP" if m15['Close'] > ema33 else "📉 DOWN"
         
-        # Classification
-        if (is_l and level_hit in ["S2", "S3"]) or (is_s and level_hit in ["R2", "R3"]):
-            rank, rr = "🔥 JACKPOT", 4
-        elif (vol_surge >= 1.7):
-            rank, rr = "💎 ELITE", 2
-        else:
-            rank, rr = "🥇 STANDARD", 2
-
         entry, sl_val = float(m15['Close']), float(m15['Low'] if is_l else m15['High'])
         risk = abs(entry - sl_val)
-        target = entry + (risk * rr) if is_l else entry - (risk * rr)
-        side = "BUY" if is_l else "SELL"
+        targets = [round(entry + (risk * r) if is_l else entry - (risk * r), 2) for r in [1, 2, 3, 4]]
 
-        msg = (f"{rank} ALERT: {s.replace('.NS','')}\n"
-               f"📍 Level: {level_hit}\n"
-               f"🔥 Action: {side} @ {entry:.2f}\n"
-               f"🎯 Target: {target:.2f} | 🛡️ SL: {sl_val:.2f}\n"
-               f"📊 Vol Surge: {vol_surge:.1f}x")
+        msg = (f"{rank} REVERSAL: {s.replace('.NS','')}\n"
+               f"---------------------------\n"
+               f"📍 Level: {level} | 🔥 {side} @ {entry:.2f}\n"
+               f"📊 Trend (33 EMA): {trend_status}\n"
+               f"🎯 T1: {targets[0]} | T4: {targets[3]}\n"
+               f"🛡️ SL: {sl_val:.2f}")
         
         send_telegram(msg)
-        return {"ts": str(df15m.index[-1]), "s": s, "d": {"Entry": entry, "Target": target, "SL": sl_val, "Side": side, "Rank": rank}}
+        return {"ts": str(df15m.index[-1]), "s": s, "d": {"Entry": entry, "Targets": targets, "T_Idx": 0, "SL": sl_val, "Side": side, "Rank": rank}}
     return None
 
 if __name__ == "__main__":
     now = datetime.now(IST)
     if now.hour < 9 or (now.hour == 9 and now.minute < 15) or now.hour > 15 or (now.hour == 15 and now.minute > 30):
+        pos = load_json(POSITIONS_FILE)
+        if pos: save_json(manage_exits(pos), POSITIONS_FILE)
         exit()
 
     mem, pos = load_json(MEMORY_FILE), load_json(POSITIONS_FILE)
