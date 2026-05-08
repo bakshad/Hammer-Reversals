@@ -6,12 +6,12 @@ on:
     - cron: '*/5 3-10 * * 1-5'
     
     # 2. Weekly Report: Runs every Friday at 4:30 PM IST (11:00 AM UTC)
-    - cron: '0 11 * * 5'
+    - cron: '30 10 * * 5'
   
   workflow_dispatch: # Allows manual trigger anytime
 
 jobs:
-  # JOB 1: THE TRADING ENGINE
+  # JOB 1: THE TRADING ENGINE (Market Scanner & Exit Manager)
   market_scanner:
     runs-on: ubuntu-latest
     permissions:
@@ -40,16 +40,15 @@ jobs:
         run: |
           git config --global user.name "SniperBot"
           git config --global user.email "sniper@trading.com"
-          # Ensure all necessary files exist to prevent git errors
           touch alert_status_reversal.json active_positions_reversal.json trade_performance_log.csv
           git add alert_status_reversal.json active_positions_reversal.json trade_performance_log.csv
           git commit -m "📊 Sync Market Data [skip ci]" || echo "No changes to sync"
           git push origin main || echo "No changes to push"
 
-  # JOB 2: WEEKLY PERFORMANCE AUDIT
+  # JOB 2: WEEKLY PERFORMANCE AUDIT (Email & Telegram Summary)
   weekly_audit:
     # Only runs on Fridays or during manual trigger
-    if: github.event.schedule == '0 11 * * 5' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '30 10 * * 5' || github.event_name == 'workflow_dispatch'
     needs: market_scanner # Ensures latest Friday trades are logged first
     runs-on: ubuntu-latest
     
@@ -63,10 +62,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install Dependencies
-        run: pip install pandas requests pytz
+        # Added yfinance here to fetch live prices for MTM calculations
+        run: pip install pandas requests pytz yfinance
 
       - name: Generate Weekly Report
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
         run: python weekly_summary.py
