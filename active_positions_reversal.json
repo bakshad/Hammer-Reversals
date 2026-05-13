@@ -11,5 +11,18 @@
         "SL": 1317.300048828125,
         "Side": "SELL",
         "Rank": "\ud83d\udd25 JACKPOT"
+    },
+    "APOLLOHOSP.NS": {
+        "Entry": 8080.5,
+        "Targets": [
+            8051.5,
+            8022.5,
+            7993.5,
+            7964.5
+        ],
+        "T_Idx": 0,
+        "SL": 8109.5,
+        "Side": "SELL",
+        "Rank": "\ud83d\udd25 JACKPOT"
     }
 }
