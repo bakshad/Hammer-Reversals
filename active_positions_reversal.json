@@ -20,8 +20,8 @@
             2246.9,
             2240.5
         ],
-        "T_Idx": 2,
-        "SL": 2259.7,
+        "T_Idx": 3,
+        "SL": 2253.3,
         "Side": "SELL",
         "Rank": "\ud83d\udc8e ELITE"
     },
@@ -37,5 +37,18 @@
         "SL": 2981.800048828125,
         "Side": "BUY",
         "Rank": "\ud83d\udc8e ELITE"
+    },
+    "COFORGE.NS": {
+        "Entry": 1273.9000244140625,
+        "Targets": [
+            1279.8,
+            1285.7,
+            1291.6,
+            1297.5
+        ],
+        "T_Idx": 0,
+        "SL": 1268.0,
+        "Side": "BUY",
+        "Rank": "\ud83d\udd25 JACKPOT"
     }
 }
