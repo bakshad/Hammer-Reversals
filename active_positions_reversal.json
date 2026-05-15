@@ -11,5 +11,18 @@
         "SL": 459.25,
         "Side": "BUY",
         "Rank": "\ud83d\udd25 JACKPOT"
+    },
+    "LICI.NS": {
+        "Entry": 802.3499755859375,
+        "Targets": [
+            802.0,
+            801.65,
+            801.3,
+            800.95
+        ],
+        "T_Idx": 0,
+        "SL": 802.7000122070312,
+        "Side": "SELL",
+        "Rank": "\ud83d\udc8e ELITE"
     }
 }
