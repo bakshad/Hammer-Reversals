@@ -21,4 +21,4 @@ jobs:
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }} # Your Gmail address
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }} # Your Gmail App Password
-        run: python send_weekly_report.py
+        run: python weekly_summary.py
