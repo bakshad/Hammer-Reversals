@@ -1,1 +1,15 @@
-{}
+{
+    "CANFINHOME.NS": {
+        "Entry": 847.0,
+        "Targets": [
+            851.04,
+            855.08,
+            859.12,
+            863.16
+        ],
+        "T_Idx": 0,
+        "SL": 844.31,
+        "Side": "BUY",
+        "Rank": "\ud83d\udc8e ELITE"
+    }
+}
