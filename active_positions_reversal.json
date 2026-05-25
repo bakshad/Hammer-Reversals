@@ -11,5 +11,18 @@
         "SL": 2285.56,
         "Side": "SELL",
         "Rank": "\ud83d\udc8e ELITE"
+    },
+    "GNFC.NS": {
+        "Entry": 516.0,
+        "Targets": [
+            513.72,
+            511.45,
+            509.17,
+            506.89
+        ],
+        "T_Idx": 0,
+        "SL": 517.52,
+        "Side": "SELL",
+        "Rank": "\ud83d\udc8e ELITE"
     }
 }
