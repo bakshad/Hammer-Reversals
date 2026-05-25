@@ -1,17 +1,4 @@
 {
-    "LUPIN.NS": {
-        "Entry": 2278.10009765625,
-        "Targets": [
-            2266.9,
-            2255.71,
-            2244.51,
-            2233.31
-        ],
-        "T_Idx": 0,
-        "SL": 2285.56,
-        "Side": "SELL",
-        "Rank": "\ud83d\udc8e ELITE"
-    },
     "GNFC.NS": {
         "Entry": 516.0,
         "Targets": [
