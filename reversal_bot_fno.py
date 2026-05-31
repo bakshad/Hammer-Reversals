@@ -78,19 +78,37 @@ def safe_fetch(s, p, i):
         return df
     except: return None
 
-def get_pivots(s):
-    df = safe_fetch(s, "2d", "1d")
+def get_daily_context(s):
+    """Calculates Pivots and checks for structural gaps."""
+    df = safe_fetch(s, "3d", "1d")
     if df is not None and len(df) >= 2:
-        p = df.iloc[-2]
-        h, l, cl = float(p['High']), float(p['Low']), float(p['Close'])
+        prev = df.iloc[-2]
+        curr = df.iloc[-1]
+        
+        # GAP CALCULATION: Flag if it gaps > 0.5% overnight
+        gap_pct = abs(float(curr['Open']) - float(prev['Close'])) / float(prev['Close'])
+        has_gap = gap_pct > 0.005 
+
+        h, l, cl = float(prev['High']), float(prev['Low']), float(prev['Close'])
         pp = (h + l + 2 * cl) / 4
-        return {"PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "R3": pp+2*(h-l), "S1": (2*pp)-h, "S2": pp-(h-l), "S3": pp-2*(h-l)}
+        return {
+            "Gap": has_gap,
+            "PP": pp, "R1": (2*pp)-l, "R2": pp+(h-l), "R3": pp+2*(h-l), 
+            "S1": (2*pp)-h, "S2": pp-(h-l), "S3": pp-2*(h-l)
+        }
     return None
 
 def is_pa(candle):
+    """Strict Price Action: Minimum 1.2x rejection wick, tiny opposite wick."""
     o, c, h, l = float(candle['Open']), float(candle['Close']), float(candle['High']), float(candle['Low'])
     body = abs(o - c) + 1e-9
-    return ((min(o, c) - l) > body * 1.2), ((h - max(o, c)) > body * 1.2)
+    upper_wick = h - max(o, c)
+    lower_wick = min(o, c) - l
+    
+    is_hammer = (lower_wick >= body * 1.2) and (upper_wick <= body)
+    is_star = (upper_wick >= body * 1.2) and (lower_wick <= body)
+    
+    return is_hammer, is_star
 
 def manage_exits(positions):
     updated = positions.copy()
@@ -135,33 +153,44 @@ def manage_exits(positions):
     return updated
 
 def process_symbol(s, memory, positions):
-    df1h, df15m = safe_fetch(s, "5d", "1h"), safe_fetch(s, "2d", "15m")
-    pivots = get_pivots(s)
-    if df1h is None or df15m is None or pivots is None: return None
+    df1h, df15m = safe_fetch(s, "5d", "1h"), safe_fetch(s, "3d", "15m")
+    daily_context = get_daily_context(s)
+    
+    if df1h is None or df15m is None or daily_context is None: return None
+    
+    # 1. Structural Exclusion (Avoid Gaps)
+    if daily_context.get("Gap") == True: return None
 
+    # 2. Trend Alignment (Check 15m price against 1H EMA)
+    trend_1h = float(df1h['EMA33'].iloc[-1])
+    
     ema33 = float(df15m['EMA33'].iloc[-1])
     atr_val = float(df15m['ATR'].iloc[-1])
     is_ham, is_star = is_pa(df1h.iloc[-1])
     m15, m15p = df15m.iloc[-1], df15m.iloc[-2]
     
-    vol_surge = m15['Volume'] / (df15m['Volume'].iloc[-11:-1].mean() + 1e-9)
+    # 3. Smoothed 20-Period Volume Logic 
+    avg_vol_20 = df15m['Volume'].iloc[-21:-1].mean() + 1e-9
+    vol_surge = m15['Volume'] / avg_vol_20
     if vol_surge < 1.2: return None
 
-    near_buy = next((k for k in ["S1", "S2", "S3", "PP"] if abs(m15['Low'] - pivots[k])/pivots[k] <= 0.0015), None)
-    near_sell = next((k for k in ["R1", "R2", "R3", "PP"] if abs(m15['High'] - pivots[k])/pivots[k] <= 0.0015), None)
+    near_buy = next((k for k in ["S1", "S2", "S3", "PP"] if abs(m15['Low'] - daily_context[k])/daily_context[k] <= 0.0015), None)
+    near_sell = next((k for k in ["R1", "R2", "R3", "PP"] if abs(m15['High'] - daily_context[k])/daily_context[k] <= 0.0015), None)
 
-    is_l = (is_ham and m15['Close'] > m15p['High'] and near_buy)
-    is_s = (is_star and m15['Close'] < m15p['Low'] and near_sell)
+    # Entry Logic + Trend Alignment Validation
+    is_l = (is_ham and m15['Close'] > m15p['High'] and near_buy and m15['Close'] > trend_1h)
+    is_s = (is_star and m15['Close'] < m15p['Low'] and near_sell and m15['Close'] < trend_1h)
 
     if (is_l or is_s) and str(df15m.index[-1]) not in memory and s not in positions:
         level, side = (near_buy if is_l else near_sell), ("BUY" if is_l else "SELL")
-        rank = "🔥 JACKPOT" if level in ["S2", "S3", "R2", "R3"] else "💎 ELITE"
-        
         entry = float(m15['Close'])
         
-        # --- ATR TARGET LOGIC ---
-        # We ensure T1 is at least 1.5x ATR to capture high-quality moves
-        # and SL is 1x ATR to prevent noise stop-outs.
+        # 4. Location-Based Alpha (Strict Jackpot specific to extreme levels)
+        if (is_l and level in ["S2", "S3"]) or (is_s and level in ["R2", "R3"]):
+            rank = "🔥 JACKPOT"
+        else:
+            rank = "💎 ELITE"
+        
         t_buffer = atr_val * 1.5
         sl_buffer = atr_val
         
@@ -184,7 +213,9 @@ def process_symbol(s, memory, positions):
 
 if __name__ == "__main__":
     now = datetime.now(IST)
-    if now.hour < 9 or (now.hour == 9 and now.minute < 15) or now.hour > 15 or (now.hour == 15 and now.minute > 30):
+    
+    # 5. Opening Range Filter: Ignore the first 30 minutes to bypass institutional morning noise
+    if now.hour < 9 or (now.hour == 9 and now.minute < 45) or now.hour > 15 or (now.hour == 15 and now.minute > 30):
         pos = load_json(POSITIONS_FILE)
         if pos: save_json(manage_exits(pos), POSITIONS_FILE)
         exit()
