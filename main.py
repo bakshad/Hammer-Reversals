@@ -211,7 +211,7 @@ def manage_exits(positions):
         if hit_t:
             if idx < 3:
                 new_sl = entry_stk if idx == 0 else targets[idx - 1]
-                send_telegram(f"🎯 *TARGET {idx+1} HIT*: {s}\n📦 Option: {strike} {opt_type} | Lot Size: {lot_size}\n💰 Premium LTP: {opt_ltp:.2f}\n📈 Running PnL: *₹{current_pnl:,.2f}*\n🛡️ New TSL: {new_sl:.2f}")
+                send_telegram(f"🎯 *TARGET {idx+1} HIT*: {s}\n📦 Option: {strike} {opt_type} | Lot Size: {lot_size}\n💰 Premium LTP: {opt_ltp:.2f}\n📈 Running PnL: *₹{current_pnl:,.2f}*\n🛡️ Underlying TSL: {new_sl:.2f}")
                 with open(LOG_FILE, 'a') as f:
                     f.write(f"{datetime.now(IST)},{s},PARTIAL_TARGET_{idx+1}_HIT,{side},{rank},{strike},{opt_type},{lot_size},{cp},{opt_ltp},{current_pnl}\n")
                 data['T_Idx'], data['SL'] = idx + 1, new_sl
@@ -235,6 +235,7 @@ def process_symbol(s, memory, positions):
     
     if df15m is None or df5m is None or daily_context is None or len(df15m) < 2 or len(df5m) < 2: return None
     
+    # Exclude setups with gaps
     if daily_context.get("Gap") == True: return None
 
     trend_15m = float(df15m['ema33'].iloc[-1])
@@ -242,11 +243,13 @@ def process_symbol(s, memory, positions):
     is_ham, is_star = is_pa(df15m.iloc[-1])
     m5, m5p = df5m.iloc[-1], df5m.iloc[-2]
     
+    # 1.2x Volume Surge Rule
     avg_vol_20 = df5m['volume'].iloc[-21:-1].mean() + 1e-9
     if (m5['volume'] / avg_vol_20) < 1.2: return None
 
-    near_buy = next((k for k in ["S1", "S2", "S3", "PP"] if abs(m5['low'] - daily_context[k])/daily_context[k] <= 0.0015), None)
-    near_sell = next((k for k in ["R1", "R2", "R3", "PP"] if abs(m5['high'] - daily_context[k])/daily_context[k] <= 0.0015), None)
+    # Widened proximity net (0.30%)
+    near_buy = next((k for k in ["S1", "S2", "S3", "PP"] if abs(m5['low'] - daily_context[k])/daily_context[k] <= 0.0030), None)
+    near_sell = next((k for k in ["R1", "R2", "R3", "PP"] if abs(m5['high'] - daily_context[k])/daily_context[k] <= 0.0030), None)
 
     is_l = (is_ham and m5['close'] > m5p['high'] and near_buy and m5['close'] > trend_15m)
     is_s = (is_star and m5['close'] < m5p['low'] and near_sell and m5['close'] < trend_15m)
@@ -255,23 +258,35 @@ def process_symbol(s, memory, positions):
         level, side = (near_buy if is_l else near_sell), ("BUY" if is_l else "SELL")
         entry = float(m5['close'])
         
+        # S2/S3 Jackpot Categorization
         rank = "🔥 JACKPOT" if ((is_l and level in ["S2", "S3"]) or (is_s and level in ["R2", "R3"])) else "💎 ELITE"
         
         opt_type = "CE" if is_l else "PE"
         strike, lot_size = get_synthetic_strike_and_lot(s, entry)
-        init_opt_price = max(2.0, round(atr_val * 2.5, 2))
+        
+        # Dynamic Premium Estimator
+        is_index = s in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
+        premium_multiplier = 0.006 if is_index else 0.022 
+        init_opt_price = max(2.0, round(entry * premium_multiplier, 2))
 
         t_buffer, sl_buffer = atr_val * 1.5, atr_val
         targets = [round(entry + (t_buffer * r), 2) for r in [1, 2, 3, 4]] if is_l else [round(entry - (t_buffer * r), 2) for r in [1, 2, 3, 4]]
         sl_val = round(entry - sl_buffer, 2) if is_l else round(entry + sl_buffer, 2)
 
+        # Projected Option Premiums (0.50 Delta)
+        opt_targets = [round(init_opt_price + (t_buffer * r * 0.50), 2) for r in [1, 2, 3, 4]]
+        opt_sl_val = max(0.10, round(init_opt_price - (sl_buffer * 0.50), 2))
+
         msg = (f"{rank} REVERSAL SIGNAL ⚡\n"
                f"---------------------------\n"
                f"📌 Stock: {s}\n"
+               f"📍 Match: {level} | {side} Underlying @ {entry:.2f}\n"
+               f"---------------------------\n"
                f"📦 *Trade Option: {strike} {opt_type}*\n"
                f"🔢 True Lot Size: {lot_size}\n"
-               f"💵 Est. Option Entry: ₹{init_opt_price:.2f}\n"
-               f"📍 Level Match: {level} | {side} Underlying @ {entry:.2f}")
+               f"💵 Est. Option Entry: *₹{init_opt_price:.2f}*\n"
+               f"🛑 Option SL: ₹{opt_sl_val:.2f}\n"
+               f"🎯 Option Targets: ₹{opt_targets[0]:.2f} | ₹{opt_targets[1]:.2f} | ₹{opt_targets[2]:.2f} | ₹{opt_targets[3]:.2f}")
         
         send_telegram(msg)
         return {
