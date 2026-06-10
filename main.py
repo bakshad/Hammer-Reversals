@@ -199,8 +199,9 @@ def manage_exits(positions):
         opt_points = round(opt_ltp - init_opt_p, 2)
         current_pnl = round(opt_points * lot_size, 2)
 
+        # 🛠️ UPDATED CSV COLUMNS: Underlying_LTP, Opt_Entry, Opt_Exit, PnL
         with open(SNAPSHOT_FILE, 'a') as sf:
-            sf.write(f"{datetime.now(IST)},{s},RUNNING_PNL,{side},{rank},{strike},{opt_type},{lot_size},{cp},{opt_ltp},{current_pnl}\n")
+            sf.write(f"{datetime.now(IST)},{s},RUNNING_PNL,{side},{rank},{strike},{opt_type},{lot_size},{cp},{init_opt_p},{opt_ltp},{current_pnl}\n")
 
         if idx >= 1:
             sl = max(sl, ema33) if side == "BUY" else min(sl, ema33)
@@ -213,19 +214,19 @@ def manage_exits(positions):
                 new_sl = entry_stk if idx == 0 else targets[idx - 1]
                 send_telegram(f"🎯 *TARGET {idx+1} HIT*: {s}\n📦 Option: {strike} {opt_type} | Lot Size: {lot_size}\n💰 Premium LTP: {opt_ltp:.2f}\n📈 Running PnL: *₹{current_pnl:,.2f}*\n🛡️ Underlying TSL: {new_sl:.2f}")
                 with open(LOG_FILE, 'a') as f:
-                    f.write(f"{datetime.now(IST)},{s},PARTIAL_TARGET_{idx+1}_HIT,{side},{rank},{strike},{opt_type},{lot_size},{cp},{opt_ltp},{current_pnl}\n")
+                    f.write(f"{datetime.now(IST)},{s},PARTIAL_TARGET_{idx+1}_HIT,{side},{rank},{strike},{opt_type},{lot_size},{cp},{init_opt_p},{opt_ltp},{current_pnl}\n")
                 data['T_Idx'], data['SL'] = idx + 1, new_sl
                 updated[s] = data
             else:
                 send_telegram(f"🏁 *FINAL TARGET 4 HIT*: {s}\n📦 Option: {strike} {opt_type}\n🔥 Net Profit: *₹{current_pnl:,.2f}*")
                 with open(LOG_FILE, 'a') as f: 
-                    f.write(f"{datetime.now(IST)},{s},FINAL_TARGET_HIT,{side},{rank},{strike},{opt_type},{lot_size},{cp},{opt_ltp},{current_pnl}\n")
+                    f.write(f"{datetime.now(IST)},{s},FINAL_TARGET_HIT,{side},{rank},{strike},{opt_type},{lot_size},{cp},{init_opt_p},{opt_ltp},{current_pnl}\n")
                 del updated[s]
         elif hit_s:
             status_str = "TSL_HIT" if idx > 0 else "SL_HIT"
             send_telegram(f"🛑 {status_str.replace('_',' ')}: {s}\n📦 Option: {strike} {opt_type}\n💸 Realized PnL: *₹{current_pnl:,.2f}*")
             with open(LOG_FILE, 'a') as f: 
-                f.write(f"{datetime.now(IST)},{s},{status_str},{side},{rank},{strike},{opt_type},{lot_size},{cp},{opt_ltp},{current_pnl}\n")
+                f.write(f"{datetime.now(IST)},{s},{status_str},{side},{rank},{strike},{opt_type},{lot_size},{cp},{init_opt_p},{opt_ltp},{current_pnl}\n")
             del updated[s]
     return updated
 
@@ -235,7 +236,6 @@ def process_symbol(s, memory, positions):
     
     if df15m is None or df5m is None or daily_context is None or len(df15m) < 2 or len(df5m) < 2: return None
     
-    # Exclude setups with gaps
     if daily_context.get("Gap") == True: return None
 
     trend_15m = float(df15m['ema33'].iloc[-1])
@@ -243,11 +243,9 @@ def process_symbol(s, memory, positions):
     is_ham, is_star = is_pa(df15m.iloc[-1])
     m5, m5p = df5m.iloc[-1], df5m.iloc[-2]
     
-    # 1.2x Volume Surge Rule
     avg_vol_20 = df5m['volume'].iloc[-21:-1].mean() + 1e-9
     if (m5['volume'] / avg_vol_20) < 1.2: return None
 
-    # Widened proximity net (0.30%)
     near_buy = next((k for k in ["S1", "S2", "S3", "PP"] if abs(m5['low'] - daily_context[k])/daily_context[k] <= 0.0030), None)
     near_sell = next((k for k in ["R1", "R2", "R3", "PP"] if abs(m5['high'] - daily_context[k])/daily_context[k] <= 0.0030), None)
 
@@ -258,13 +256,11 @@ def process_symbol(s, memory, positions):
         level, side = (near_buy if is_l else near_sell), ("BUY" if is_l else "SELL")
         entry = float(m5['close'])
         
-        # S2/S3 Jackpot Categorization
         rank = "🔥 JACKPOT" if ((is_l and level in ["S2", "S3"]) or (is_s and level in ["R2", "R3"])) else "💎 ELITE"
         
         opt_type = "CE" if is_l else "PE"
         strike, lot_size = get_synthetic_strike_and_lot(s, entry)
         
-        # Dynamic Premium Estimator
         is_index = s in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
         premium_multiplier = 0.006 if is_index else 0.022 
         init_opt_price = max(2.0, round(entry * premium_multiplier, 2))
@@ -273,9 +269,11 @@ def process_symbol(s, memory, positions):
         targets = [round(entry + (t_buffer * r), 2) for r in [1, 2, 3, 4]] if is_l else [round(entry - (t_buffer * r), 2) for r in [1, 2, 3, 4]]
         sl_val = round(entry - sl_buffer, 2) if is_l else round(entry + sl_buffer, 2)
 
-        # Projected Option Premiums (0.50 Delta)
         opt_targets = [round(init_opt_price + (t_buffer * r * 0.50), 2) for r in [1, 2, 3, 4]]
         opt_sl_val = max(0.10, round(init_opt_price - (sl_buffer * 0.50), 2))
+        
+        # 💰 Capital Required Calculation
+        capital_req = round(init_opt_price * lot_size, 2)
 
         msg = (f"{rank} REVERSAL SIGNAL ⚡\n"
                f"---------------------------\n"
@@ -285,6 +283,7 @@ def process_symbol(s, memory, positions):
                f"📦 *Trade Option: {strike} {opt_type}*\n"
                f"🔢 True Lot Size: {lot_size}\n"
                f"💵 Est. Option Entry: *₹{init_opt_price:.2f}*\n"
+               f"🏦 Capital Required: *₹{capital_req:,.2f}*\n"
                f"🛑 Option SL: ₹{opt_sl_val:.2f}\n"
                f"🎯 Option Targets: ₹{opt_targets[0]:.2f} | ₹{opt_targets[1]:.2f} | ₹{opt_targets[2]:.2f} | ₹{opt_targets[3]:.2f}")
         
@@ -303,7 +302,10 @@ def process_symbol(s, memory, positions):
 # =====================================================================
 if __name__ == "__main__":
     os.makedirs(BASE_DIR, exist_ok=True)
-    csv_header = "Timestamp,Symbol,Status,Side,Rank,Strike,Opt_Type,Lot_Size,Current_Underlying,Current_Opt_Premium,PnL\n"
+    
+    # 🛠️ UPDATED CSV HEADER
+    csv_header = "Timestamp,Symbol,Status,Side,Rank,Strike,Opt_Type,Lot_Size,Underlying_LTP,Opt_Entry,Opt_Exit,PnL\n"
+    
     if not os.path.exists(LOG_FILE):
         with open(LOG_FILE, 'w') as f: f.write(csv_header)
     if not os.path.exists(SNAPSHOT_FILE):
@@ -319,7 +321,6 @@ if __name__ == "__main__":
             print(f"😴 Weekend Mode ({now.strftime('%A')}). Shutting down GitHub Runner.")
             sys.exit(0)
 
-        # 🛑 Market Close & Log Export Protocol
         if now.hour > 15 or (now.hour == 15 and now.minute >= 31):
             print("🛑 Trading day finished (3:30 PM). Closing positions and saving logs...")
             pos = load_json(POSITIONS_FILE)
@@ -333,7 +334,6 @@ if __name__ == "__main__":
             print("👋 System shutting down gracefully. Handing off to GitHub Actions auto-commit.")
             sys.exit(0)
             
-        # ⏸️ Pre-Market Standby (9:30 AM to 9:45 AM)
         if now.hour == 9 and now.minute < 45:
             print(f"⏳ Pre-market sync ({now.strftime('%H:%M:%S')}). Engine waiting for 09:45 AM boundary...")
             time.sleep(60)
@@ -359,8 +359,9 @@ if __name__ == "__main__":
                         mem[res["ts"]] = True
                         pos[res["s"]] = res["d"]
                         d = res["d"]
+                        # 🛠️ UPDATED INITIAL LOG ENTRY: Writes Entry Price twice (once for Entry, once for Exit) and 0.00 PnL
                         with open(LOG_FILE, 'a') as f_log:
-                            f_log.write(f"{datetime.now(IST)},{res['s']},OPEN,{d['Side']},{d['Rank']},{d['Strike']},{d['Opt_Type']},{d['Lot_Size']},{d['Entry']},{d['Init_Opt_Price']},0.00\n")
+                            f_log.write(f"{datetime.now(IST)},{res['s']},OPEN,{d['Side']},{d['Rank']},{d['Strike']},{d['Opt_Type']},{d['Lot_Size']},{d['Entry']},{d['Init_Opt_Price']},{d['Init_Opt_Price']},0.00\n")
                 except Exception:
                     pass
                     
